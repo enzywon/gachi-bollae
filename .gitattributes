@@ -1,0 +1,2 @@
+# Preserve vendored Agent Skills exactly as published by their upstreams.
+.agents/skills/** -whitespace

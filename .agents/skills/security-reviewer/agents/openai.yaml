@@ -1,0 +1,4 @@
+interface:
+  display_name: "Security Reviewer"
+  short_description: "Review auth, data, secrets, and Worker security"
+  default_prompt: "Use $security-reviewer to review this change for concrete security risks."

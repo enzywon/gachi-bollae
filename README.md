@@ -92,6 +92,8 @@ npm run git:setup
 
 모든 변경은 작업 브랜치와 PR을 통해 `main`에 병합합니다. PR에서는 제목 형식, lint, 테스트를 GitHub Actions로 자동 검사하며 리뷰 방식은 [코드 리뷰 가이드](./docs/CODE_REVIEW.md)를 따릅니다.
 
+팀에서 사용하는 React, Cloudflare, Playwright, 보안 및 프로젝트 전용 리뷰 skills는 `.agents/skills/`에 함께 버전 관리합니다. 설치 출처와 고정 버전은 [Agent skills 문서](./docs/AGENT_SKILLS.md)에서 확인할 수 있습니다. 저장소를 처음 받거나 skill이 변경된 뒤에는 Codex를 다시 시작해 주세요.
+
 ## 현재 상태
 
 추천 흐름과 UI를 검증할 수 있는 프로토타입 단계입니다. 실제 OTT 카탈로그, 사용자 계정, 추천 기록 저장 기능은 이후 연동이 필요합니다.

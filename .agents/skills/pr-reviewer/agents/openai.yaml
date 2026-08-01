@@ -1,0 +1,4 @@
+interface:
+  display_name: "PR Reviewer"
+  short_description: "Correctness와 회귀를 우선하는 PR 리뷰"
+  default_prompt: "Use $pr-reviewer to review this pull request for correctness and regressions."
