@@ -1,0 +1,27 @@
+#!/bin/sh
+
+commit_message_file="$1"
+subject="$(sed -n '1p' "$commit_message_file")"
+
+case "$subject" in
+  Merge\ *|Revert\ *)
+    exit 0
+    ;;
+esac
+
+pattern='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9._/-]+\))?(!)?: .{1,72}$'
+
+if printf '%s\n' "$subject" | grep -Eq "$pattern"; then
+  exit 0
+fi
+
+cat >&2 <<'EOF'
+커밋 메시지가 Conventional Commits 형식과 맞지 않습니다.
+
+형식: <type>(<scope>): <summary>
+예시: feat(recommendation): 함께 보기 취향 점수 추가
+
+허용 타입: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert
+EOF
+
+exit 1

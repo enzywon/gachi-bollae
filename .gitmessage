@@ -1,0 +1,9 @@
+# <type>(<scope>): <summary>
+#
+# type: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert
+# scope는 선택 사항입니다.
+# 예: feat(recommendation): 함께 보기 취향 점수 추가
+#
+# 본문에는 변경 이유와 영향을 필요한 만큼 설명합니다.
+#
+# BREAKING CHANGE: 호환성이 깨지는 변경이 있다면 여기에 적습니다.
