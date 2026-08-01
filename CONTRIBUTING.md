@@ -50,3 +50,44 @@ npm run git:setup
 ```
 
 이 명령은 `.gitmessage`를 커밋 템플릿으로 지정하고 `.githooks/commit-msg`를 활성화합니다.
+
+## PR 작업 흐름
+
+`main`에는 직접 커밋하지 않습니다. 작업마다 브랜치를 만들고 draft PR에서 CI와 리뷰를 마친 뒤 병합합니다.
+
+### 1. 작업 브랜치 만들기
+
+```bash
+npm run pr:start -- feat recommendation-history
+```
+
+브랜치는 `<type>/<slug>` 형식으로 만들어집니다. 위 예시는 `feat/recommendation-history`가 됩니다.
+
+### 2. 변경하고 커밋하기
+
+```bash
+git add <변경한 파일>
+git commit -m "feat(recommendation): 추천 기록 저장 기능 추가"
+```
+
+### 3. Draft PR 열기
+
+```bash
+npm run pr:open
+```
+
+현재 브랜치를 원격에 푸시하고 `main`을 대상으로 draft PR을 만듭니다.
+
+### 4. CI와 리뷰 확인하기
+
+```bash
+npm run pr:checks
+```
+
+CI가 통과하고 리뷰 코멘트를 모두 반영한 뒤 PR 본문의 `Review focus`를 확인합니다. 병합할 준비가 끝나면 다음 명령으로 draft를 해제합니다.
+
+```bash
+npm run pr:ready
+```
+
+코드 리뷰 기준과 코멘트 수준은 [docs/CODE_REVIEW.md](./docs/CODE_REVIEW.md)를 따릅니다.
