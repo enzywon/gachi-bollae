@@ -2,6 +2,7 @@
 
 ## Git workflow
 
+- Before any repository file mutation, load and follow `$branch-first-workflow`.
 - Never commit directly to `main`.
 - Never use an `agent/` branch prefix.
 - Start every change from an up-to-date `main` branch.

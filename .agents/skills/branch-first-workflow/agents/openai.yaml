@@ -1,0 +1,4 @@
+interface:
+  display_name: "Branch-First Workflow"
+  short_description: "모든 파일 변경 전에 안전한 작업 브랜치를 만들고 검증합니다"
+  default_prompt: "Use $branch-first-workflow before modifying repository files."
