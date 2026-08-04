@@ -1,0 +1,4 @@
+interface:
+  display_name: "Test Reviewer"
+  short_description: "Review regression coverage and focused test design"
+  default_prompt: "Use $test-reviewer to review test coverage and propose focused regression tests."

@@ -14,6 +14,10 @@
     "validate:artifact": "bash scripts/validate-artifact.sh",
     "lint": "bash scripts/sites-env.sh -- eslint . --ignore-pattern dist --ignore-pattern .next",
     "git:setup": "bash scripts/setup-git-hooks.sh",
+    "pr:start": "bash scripts/start-work.sh",
+    "pr:open": "bash scripts/open-pr.sh",
+    "pr:checks": "gh pr checks --watch",
+    "pr:ready": "gh pr ready",
     "db:generate": "bash scripts/sites-env.sh -- drizzle-kit generate"
   },
   "dependencies": {
