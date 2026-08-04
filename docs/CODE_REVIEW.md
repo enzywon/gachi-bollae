@@ -61,7 +61,7 @@ Draft PR에서는 자동 리뷰를 요청하지 않습니다. Codex는 PR을 처
 Codex 자동 요청을 사용하려면 저장소 관리자가 다음 설정을 한 번 완료해야 합니다.
 
 1. `enzy-won` 계정에서 Fine-grained personal access token을 만듭니다.
-2. 접근 저장소는 `gachi-bollae` 하나만 선택합니다.
+2. Resource owner는 `enzywon` 조직, 접근 저장소는 `gachi-bollae` 하나만 선택합니다.
 3. Repository permissions에서 `Pull requests: Read and write`만 추가합니다.
 4. 저장소의 `Settings > Secrets and variables > Actions`에 `ENZY_WON_CODEX_REVIEW_TOKEN` 이름으로 저장합니다.
 
