@@ -15,9 +15,6 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "같이볼래 — 지금 함께 보기 좋은 콘텐츠",
   description: "상황과 두 사람의 취향을 맞춰 3분 안에 볼 콘텐츠를 골라주는 추천 서비스",
-  other: {
-    "codex-preview": "development",
-  },
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",

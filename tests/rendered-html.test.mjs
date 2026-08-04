@@ -1,33 +1,87 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
+import { createServer } from "node:net";
+import { setTimeout as delay } from "node:timers/promises";
+import { fileURLToPath } from "node:url";
 
-const developmentPreviewMeta =
-  /<meta(?=[^>]*\bname=["']codex-preview["'])(?=[^>]*\bcontent=["']development["'])[^>]*>/i;
+const projectRoot = fileURLToPath(new URL("..", import.meta.url));
+const nextBin = fileURLToPath(
+  new URL("../node_modules/next/dist/bin/next", import.meta.url),
+);
+const startupTimeoutMs = Number(process.env.TEST_STARTUP_TIMEOUT_MS ?? 60_000);
 
-test("renders development preview metadata", async () => {
-  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
-  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
-  const { default: worker } = await import(workerUrl.href);
+// A fixed port silently attaches the test to whatever else is already
+// listening, so let the OS hand out an unused one.
+async function findFreePort() {
+  const probe = createServer();
+  probe.listen(0, "127.0.0.1");
+  await once(probe, "listening");
+  const { port } = probe.address();
+  await new Promise((resolve, reject) => {
+    probe.close((error) => (error ? reject(error) : resolve()));
+  });
+  return port;
+}
 
-  const response = await worker.fetch(
-    new Request("http://localhost/", {
-      headers: { accept: "text/html" },
-    }),
-    {
-      ASSETS: {
-        fetch: async () => new Response("Not found", { status: 404 }),
-      },
-    },
-    {
-      waitUntil() {},
-      passThroughOnException() {},
-    },
+// `next start` prints a ready line, but polling the port is version independent
+// and also catches a server that starts and then fails the first request.
+async function waitForReady(server, baseUrl, readOutput) {
+  const deadline = Date.now() + startupTimeoutMs;
+
+  while (Date.now() < deadline) {
+    if (server.exitCode !== null) {
+      throw new Error(
+        `next start exited early with code ${server.exitCode}:\n${readOutput()}`,
+      );
+    }
+
+    try {
+      const response = await fetch(baseUrl, { headers: { accept: "text/html" } });
+      if (response.status < 500) return;
+    } catch {
+      // Not accepting connections yet.
+    }
+
+    await delay(250);
+  }
+
+  throw new Error(
+    `next start was not ready within ${startupTimeoutMs}ms:\n${readOutput()}`,
   );
+}
 
-  assert.equal(response.status, 200);
-  assert.match(
-    response.headers.get("content-type") ?? "",
-    /^text\/html\b/i,
+test("홈 화면을 서버에서 HTML로 렌더링한다", async () => {
+  const port = Number(process.env.TEST_PORT ?? (await findFreePort()));
+  const baseUrl = `http://127.0.0.1:${port}`;
+
+  const chunks = [];
+  const server = spawn(
+    process.execPath,
+    [nextBin, "start", "--hostname", "127.0.0.1", "--port", String(port)],
+    { cwd: projectRoot, stdio: ["ignore", "pipe", "pipe"] },
   );
-  assert.match(await response.text(), developmentPreviewMeta);
+  server.stdout.on("data", (chunk) => chunks.push(chunk));
+  server.stderr.on("data", (chunk) => chunks.push(chunk));
+  const readOutput = () => Buffer.concat(chunks).toString();
+
+  try {
+    await waitForReady(server, baseUrl, readOutput);
+
+    const response = await fetch(baseUrl, { headers: { accept: "text/html" } });
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
+
+    const html = await response.text();
+    assert.match(html, /<html[^>]*\blang=["']ko["']/i);
+    assert.ok(html.includes("같이볼래"), "문서 제목이 렌더링되지 않았습니다.");
+    assert.ok(
+      html.includes("누구와 볼까요?"),
+      "첫 화면의 모드 선택 카드가 렌더링되지 않았습니다.",
+    );
+  } finally {
+    server.kill("SIGTERM");
+    await once(server, "exit");
+  }
 });

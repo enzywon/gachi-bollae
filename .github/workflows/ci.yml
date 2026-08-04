@@ -49,7 +49,7 @@ jobs:
           cache: npm
 
       - name: 의존성 설치
-        run: npm run install:ci
+        run: npm ci
 
       - name: Lint
         run: npm run lint
