@@ -49,4 +49,22 @@ AI 리뷰를 요청할 때는 “전체적으로 봐줘”보다 다음처럼 �
 실제 수정이 필요한 내용만 파일과 줄 번호를 붙여 코멘트해 줘.
 ```
 
+## 자동 AI 리뷰
+
+Ready 상태의 PR을 열면 다음 리뷰가 자동으로 실행됩니다.
+
+- CodeRabbit: 저장소에 연결된 모든 Ready PR 리뷰
+- Codex: `enzy-o0` 또는 `kjw2000e`가 작성한 Ready PR에 `enzy-won` 계정으로 리뷰 요청
+
+Draft PR에서는 자동 리뷰를 요청하지 않습니다. Codex는 PR을 처음 Ready 상태로 만들 때 한 번만 요청하며, 새 커밋마다 다시 실행하지 않습니다. 변경 후 재검토가 필요하면 `enzy-won` 계정으로 `@codex review`를 직접 남깁니다.
+
+Codex 자동 요청을 사용하려면 저장소 관리자가 다음 설정을 한 번 완료해야 합니다.
+
+1. `enzy-won` 계정에서 Fine-grained personal access token을 만듭니다.
+2. 접근 저장소는 `gachi-bollae` 하나만 선택합니다.
+3. Repository permissions에서 `Pull requests: Read and write`만 추가합니다.
+4. 저장소의 `Settings > Secrets and variables > Actions`에 `ENZY_WON_CODEX_REVIEW_TOKEN` 이름으로 저장합니다.
+
+토큰은 파일이나 PR에 입력하지 않습니다. 만료일을 설정하고, 만료되거나 폐기한 뒤에는 같은 이름의 Secret만 교체합니다. 자동화는 Secret에 접근하는 대신 PR 브랜치를 체크아웃하거나 실행하지 않도록 제한되어 있습니다.
+
 협업자가 생기면 `.github/CODEOWNERS`를 추가하고 영역별 담당자에게 리뷰가 자동 요청되도록 확장합니다.

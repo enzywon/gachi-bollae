@@ -1,0 +1,61 @@
+name: Codex auto review
+
+on:
+  pull_request_target:
+    branches:
+      - main
+    types:
+      - opened
+      - reopened
+      - ready_for_review
+
+# The workflow uses only the narrowly scoped enzy-won token below.
+permissions: {}
+
+concurrency:
+  group: codex-auto-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  request-review:
+    name: Request Codex review
+    if: >-
+      github.event.pull_request.draft == false &&
+      contains(fromJSON('["enzy-o0", "kjw2000e"]'), github.event.pull_request.user.login)
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      # pull_request_target can access secrets, so this job must never check out
+      # or execute code from the pull request.
+      - name: enzy-won 계정으로 Codex 리뷰 요청
+        env:
+          GH_TOKEN: ${{ secrets.ENZY_WON_CODEX_REVIEW_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${GH_TOKEN:-}" ]]; then
+            echo "ENZY_WON_CODEX_REVIEW_TOKEN 저장소 Secret이 필요합니다."
+            exit 1
+          fi
+
+          existing_id="$(
+            gh api --paginate \
+              "repos/${REPOSITORY}/issues/${PR_NUMBER}/comments?per_page=100" \
+              --jq '.[] | select(.user.login == "enzy-won" and .body == "@codex review") | .id' \
+              | sed -n '1p'
+          )"
+
+          if [[ -n "$existing_id" ]]; then
+            echo "이 PR에는 enzy-won의 Codex 리뷰 요청이 이미 있습니다."
+            exit 0
+          fi
+
+          gh api --method POST \
+            "repos/${REPOSITORY}/issues/${PR_NUMBER}/comments" \
+            --field body='@codex review' \
+            >/dev/null
+
+          echo "Codex 리뷰를 요청했습니다."
