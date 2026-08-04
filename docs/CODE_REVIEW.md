@@ -50,3 +50,11 @@ AI 리뷰를 요청할 때는 “전체적으로 봐줘”보다 다음처럼 �
 ```
 
 협업자가 생기면 `.github/CODEOWNERS`를 추가하고 영역별 담당자에게 리뷰가 자동 요청되도록 확장합니다.
+
+## AI 자동 리뷰
+
+Ready 상태의 PR을 만들거나 새 커밋을 push하면 `AI code review` workflow가 실행됩니다. GitHub Models의 무료 사용량과 GitHub가 자동 발급하는 `GITHUB_TOKEN`을 사용하므로 별도 API 키를 저장하지 않습니다.
+
+자동 리뷰는 조직의 Owner, Member, Collaborator가 만든 PR에만 실행합니다. workflow는 PR 브랜치의 코드를 실행하지 않고 기준 브랜치에 병합된 리뷰 스크립트로 diff만 분석합니다. 생성된 파일, lockfile, vendored skill은 기본 리뷰 대상에서 제외하며 큰 diff는 일부만 검토할 수 있습니다.
+
+봇은 PR마다 하나의 `AI 코드 리뷰` 댓글을 유지하고 새 커밋이 올라오면 같은 댓글을 갱신합니다. 기본 모델은 `openai/gpt-4.1`이며 저장소 변수 `AI_REVIEW_MODEL`로 바꿀 수 있습니다. 무료 사용량의 호출 제한을 넘거나 GitHub Models가 일시적으로 실패하면 AI review check만 실패하며, 사람 승인과 기존 필수 CI가 병합 기준으로 남습니다.
