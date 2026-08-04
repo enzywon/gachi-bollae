@@ -1,0 +1,47 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["summary", "findings"],
+  "properties": {
+    "summary": {
+      "type": "string",
+      "description": "변경 전체에 대한 두세 문장 요약. 한국어로 작성한다."
+    },
+    "findings": {
+      "type": "array",
+      "description": "지적 사항 목록. 문제가 없으면 빈 배열.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["severity", "file", "line", "title", "detail", "suggestion"],
+        "properties": {
+          "severity": {
+            "type": "string",
+            "enum": ["critical", "major", "minor", "nit"],
+            "description": "critical=머지 전 반드시 수정, major=수정 권장, minor=개선 제안, nit=취향/사소함"
+          },
+          "file": {
+            "type": "string",
+            "description": "저장소 루트 기준 상대 경로."
+          },
+          "line": {
+            "type": "integer",
+            "description": "지적 대상 시작 줄 번호. 특정할 수 없으면 0."
+          },
+          "title": {
+            "type": "string",
+            "description": "한 줄 요약. 60자 이내, 한국어."
+          },
+          "detail": {
+            "type": "string",
+            "description": "왜 문제인지와 근거. 한국어."
+          },
+          "suggestion": {
+            "type": "string",
+            "description": "대체 코드 조각. 제안할 코드가 없으면 빈 문자열."
+          }
+        }
+      }
+    }
+  }
+}

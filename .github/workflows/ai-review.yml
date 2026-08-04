@@ -1,0 +1,99 @@
+name: AI Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ai-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: AI 리뷰
+    # 포크에서 올라온 PR에는 시크릿이 전달되지 않으므로 건너뛴다.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: 저장소 체크아웃
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: 변경 사항 추출
+        id: diff
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        shell: bash
+        run: |
+          mkdir -p ai-review-out
+          base_sha=$(git merge-base "origin/$BASE_REF" HEAD)
+          git diff "$base_sha" HEAD > ai-review-out/pr.diff
+          echo "base-sha=$base_sha" >> "$GITHUB_OUTPUT"
+          if [ ! -s ai-review-out/pr.diff ]; then
+            echo "변경 사항이 없어 리뷰를 건너뜁니다."
+            echo "empty=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "empty=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Codex 리뷰
+        id: codex
+        if: steps.diff.outputs.empty == 'false'
+        continue-on-error: true
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          permission-profile: ':workspace'
+          prompt-file: scripts/ai-review/codex-prompt.md
+          output-schema-file: scripts/ai-review/codex-schema.json
+          output-file: ai-review-out/codex.json
+
+      - name: CodeRabbit CLI 설치
+        id: coderabbit-install
+        if: steps.diff.outputs.empty == 'false'
+        continue-on-error: true
+        shell: bash
+        run: |
+          curl -fsSL https://cli.coderabbit.ai/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: CodeRabbit 리뷰
+        id: coderabbit
+        if: steps.diff.outputs.empty == 'false' && steps.coderabbit-install.outcome == 'success'
+        continue-on-error: true
+        env:
+          CODERABBIT_API_KEY: ${{ secrets.CODERABBIT_API_KEY }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        shell: bash
+        run: |
+          coderabbit auth login --api-key "$CODERABBIT_API_KEY"
+          coderabbit review --agent --base "origin/$BASE_REF" > ai-review-out/coderabbit.jsonl
+
+      - name: Node.js 설정
+        if: steps.diff.outputs.empty == 'false'
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: 리뷰 코멘트 작성
+        if: steps.diff.outputs.empty == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          node scripts/ai-review/post-review.mjs \
+            --repo "${{ github.repository }}" \
+            --pr "${{ github.event.pull_request.number }}" \
+            --sha "${{ github.event.pull_request.head.sha }}" \
+            --status "codex=${{ steps.codex.outcome }},coderabbit=${{ steps.coderabbit.outcome }}" \
+            codex=ai-review-out/codex.json \
+            coderabbit=ai-review-out/coderabbit.jsonl
