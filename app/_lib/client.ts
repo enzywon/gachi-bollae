@@ -20,11 +20,12 @@ function blankToNull(value: string): string | null {
   return trimmed === "" ? null : trimmed;
 }
 
-function seasonToNumber(value: string): number | null {
-  const trimmed = value.trim();
-  if (trimmed === "") return null;
-  const parsed = Number(trimmed);
-  return Number.isInteger(parsed) ? parsed : null;
+/**
+ * 시즌 입력은 빈 값만 null로 보내고 형식 판단은 서버에 맡긴다.
+ * 여기서 잘못된 값을 null로 바꾸면 `1.5` 같은 입력이 조용히 기존 시즌을 지운다.
+ */
+function seasonToInput(value: string): string | null {
+  return blankToNull(value);
 }
 
 export type ContentSnapshot = {
@@ -63,10 +64,12 @@ export async function createRecord(
       ...pick,
       watchStatus: values.watchStatus,
       ...datesOf(values),
-      seasonNumber: seasonToNumber(values.seasonNumber),
+      seasonNumber: seasonToInput(values.seasonNumber),
       memo: blankToNull(values.memo),
       rating: values.rating,
-      shortComment: values.rating === null ? null : blankToNull(values.shortComment),
+      // 별점 없이 감상만 입력한 경우를 여기서 버리지 않는다.
+      // 버리면 미평가 기록으로 저장되고 사용자가 쓴 문장이 조용히 사라진다.
+      shortComment: blankToNull(values.shortComment),
     }),
   });
 
@@ -82,7 +85,7 @@ export async function updateRecord(id: number, values: RatingSheetValues): Promi
     body: JSON.stringify({
       watchStatus: values.watchStatus,
       ...datesOf(values),
-      seasonNumber: seasonToNumber(values.seasonNumber),
+      seasonNumber: seasonToInput(values.seasonNumber),
       memo: blankToNull(values.memo),
     }),
   });
@@ -123,7 +126,8 @@ export async function fetchRecords(params: {
     status: params.status,
   });
 
-  const response = await fetch(`/api/records?${query.toString()}`);
+  // 소유자별 응답이므로 브라우저 캐시를 쓰지 않는다.
+  const response = await fetch(`/api/records?${query.toString()}`, { cache: "no-store" });
   if (!response.ok) throw new Error(await readError(response));
   return (await response.json()) as RecordListResponse;
 }

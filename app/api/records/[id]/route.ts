@@ -1,4 +1,4 @@
-import { errorResponse, parseRecordId } from "../../../_lib/api";
+import { errorResponse, jsonNoStore, parseRecordId } from "../../../_lib/api";
 import { readOwnerKey } from "../../../_lib/owner";
 import { deleteRecord, findRecord, updateRecord } from "../../../_lib/records";
 import { validateRecordPatch } from "../../../_lib/validation";
@@ -11,12 +11,12 @@ export async function GET(request: Request, context: Context) {
   try {
     const ownerKey = readOwnerKey(request);
     const id = parseRecordId((await context.params).id);
-    if (!ownerKey || id === null) return Response.json(NOT_FOUND, { status: 404 });
+    if (!ownerKey || id === null) return jsonNoStore(NOT_FOUND, 404);
 
     const record = await findRecord(ownerKey, id);
-    if (!record) return Response.json(NOT_FOUND, { status: 404 });
+    if (!record) return jsonNoStore(NOT_FOUND, 404);
 
-    return Response.json({ record });
+    return jsonNoStore({ record });
   } catch (error) {
     return errorResponse(error);
   }

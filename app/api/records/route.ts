@@ -1,4 +1,4 @@
-import { errorResponse, jsonWithOwner } from "../../_lib/api";
+import { errorResponse, jsonNoStore, jsonWithOwner } from "../../_lib/api";
 import { readOwnerKey, resolveOwnerKey } from "../../_lib/owner";
 import { createRecord, listRecords } from "../../_lib/records";
 import { CONTENT_FORMATS, WATCH_STATUSES, type SortKey } from "../../_lib/types";
@@ -19,7 +19,7 @@ export async function GET(request: Request) {
 
     // 아직 아무것도 기록하지 않은 방문자다. 쿠키를 미리 발급할 이유가 없다.
     if (!ownerKey) {
-      return Response.json({ groups: [], unrated: [], totalRecords: 0 });
+      return jsonNoStore({ groups: [], unrated: [], totalRecords: 0 });
     }
 
     const url = new URL(request.url);
@@ -29,7 +29,7 @@ export async function GET(request: Request) {
       status: parseEnum(url.searchParams.get("status"), WATCH_STATUSES),
     });
 
-    return Response.json(result);
+    return jsonNoStore(result);
   } catch (error) {
     return errorResponse(error);
   }

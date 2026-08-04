@@ -56,6 +56,13 @@ const VALID = {
   rating: 4,
 };
 
+const SERIES = {
+  ...VALID,
+  contentKey: "demo:2",
+  contentTitle: "사라진 초대장",
+  contentFormat: "시리즈",
+};
+
 test("기록이 없는 방문자는 빈 목록을 받는다", async () => {
   const response = await call("/api/records");
 
@@ -66,6 +73,39 @@ test("기록이 없는 방문자는 빈 목록을 받는다", async () => {
 test("쿠키 없이 개별 기록에 접근하면 404다", async () => {
   const response = await call("/api/records/1");
   assert.equal(response.status, 404);
+});
+
+/** 소유자 쿠키가 바뀐 뒤 같은 URL로 이전 응답이 재사용되면 안 된다. */
+test("기록 조회 응답은 캐시되지 않는다", async () => {
+  for (const path of ["/api/records", "/api/records/1"]) {
+    const response = await call(path);
+    assert.match(response.headers.get("cache-control") ?? "", /no-store/, path);
+  }
+});
+
+test("본문이 올바른 JSON이 아니면 500이 아니라 400이다", async () => {
+  const response = await call("/api/records", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: "{ not json",
+  });
+
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /JSON/);
+});
+
+test("정수가 아닌 시즌 번호는 조용히 버리지 않고 거부한다", async () => {
+  const response = await post({ ...SERIES, seasonNumber: "1.5" });
+
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /시즌 번호/);
+});
+
+test("음수 시즌 번호는 거부한다", async () => {
+  const response = await post({ ...SERIES, seasonNumber: "-1" });
+
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /시즌 번호/);
 });
 
 test("기록 식별자가 정수가 아니면 404다", async () => {

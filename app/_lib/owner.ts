@@ -30,13 +30,19 @@ export function createOwnerKey(): string {
 }
 
 export function ownerCookieHeader(ownerKey: string): string {
-  return [
+  const parts = [
     `${OWNER_COOKIE}=${encodeURIComponent(ownerKey)}`,
     "Path=/",
     "HttpOnly",
     "SameSite=Lax",
     `Max-Age=${ONE_YEAR_SECONDS}`,
-  ].join("; ");
+  ];
+
+  // 이 쿠키는 기록 접근 권한 그 자체이므로 평문 전송을 막는다.
+  // 로컬 개발은 http로 돌아가므로 개발 빌드에서는 붙이지 않는다.
+  if (process.env.NODE_ENV === "production") parts.push("Secure");
+
+  return parts.join("; ");
 }
 
 /** 쓰기 요청용. 쿠키가 없으면 새로 발급하고 응답에 실어야 한다. */

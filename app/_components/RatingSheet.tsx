@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { kstDefaultRecordDate, kstToday } from "../_lib/date";
 import {
   MAX_COMMENT_LENGTH,
@@ -78,13 +78,22 @@ export default function RatingSheet({
   const today = useMemo(() => kstToday(), []);
   const seasonAllowed = allowsSeason(format);
 
+  /**
+   * 저장 중에는 닫기를 무시한다.
+   * 쓰기는 계속 진행되는데 시트만 사라지면 사용자는 취소된 것으로 읽는다.
+   */
+  const requestClose = useCallback(() => {
+    if (submitting) return;
+    onClose();
+  }, [submitting, onClose]);
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") requestClose();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
+  }, [requestClose]);
 
   const update = <K extends keyof RatingSheetValues>(key: K, value: RatingSheetValues[K]) => {
     setValues((current) => ({ ...current, [key]: value }));
@@ -108,7 +117,7 @@ export default function RatingSheet({
     : null;
 
   return (
-    <div className="sheet-backdrop" role="presentation" onClick={onClose}>
+    <div className="sheet-backdrop" role="presentation" onClick={requestClose}>
       <section
         className="rating-sheet"
         role="dialog"
@@ -127,7 +136,13 @@ export default function RatingSheet({
               </p>
             )}
           </div>
-          <button type="button" className="sheet-close" onClick={onClose} aria-label="닫기">
+          <button
+            type="button"
+            className="sheet-close"
+            onClick={requestClose}
+            disabled={submitting}
+            aria-label="닫기"
+          >
             ✕
           </button>
         </header>
@@ -172,6 +187,7 @@ export default function RatingSheet({
               value={values.shortComment}
               onChange={(event) => update("shortComment", event.target.value)}
               placeholder="한 문장으로 남겨 보세요"
+              maxLength={MAX_COMMENT_LENGTH}
               rows={2}
             />
           </label>
@@ -250,7 +266,7 @@ export default function RatingSheet({
         )}
 
         <footer className="sheet-footer">
-          <button type="button" className="sheet-cancel" onClick={onClose} disabled={submitting}>
+          <button type="button" className="sheet-cancel" onClick={requestClose} disabled={submitting}>
             취소
           </button>
           <button
