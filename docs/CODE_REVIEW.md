@@ -65,6 +65,6 @@ Codex 자동 요청을 사용하려면 저장소 관리자가 다음 설정을 �
 3. Repository permissions에서 `Issues: Read and write`만 추가합니다. GitHub는 PR의 일반 댓글을 Issue comment로 처리합니다.
 4. 저장소의 `Settings > Secrets and variables > Actions`에 `ENZY_WON_CODEX_REVIEW_TOKEN` 이름으로 저장합니다.
 
-토큰은 파일이나 PR에 입력하지 않습니다. 만료일을 설정하고, 만료되거나 폐기한 뒤에는 같은 이름의 Secret만 교체합니다. 자동화는 Secret에 접근하는 대신 PR 브랜치를 체크아웃하거나 실행하지 않도록 제한되어 있습니다.
+토큰은 파일이나 PR에 입력하지 않습니다. 만료일을 설정하고, 만료되거나 폐기한 뒤에는 같은 이름의 Secret만 교체합니다. 자동화는 이 Secret을 `GH_TOKEN`으로 주입해 사용하지만, PR 브랜치를 체크아웃하거나 실행하지 않도록 제한되어 있습니다.
 
 협업자가 생기면 `.github/CODEOWNERS`를 추가하고 영역별 담당자에게 리뷰가 자동 요청되도록 확장합니다.

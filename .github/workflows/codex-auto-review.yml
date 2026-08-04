@@ -55,7 +55,7 @@ jobs:
 
           gh api --method POST \
             "repos/${REPOSITORY}/issues/${PR_NUMBER}/comments" \
-            --field body='@codex review' \
+            --raw-field body='@codex review' \
             >/dev/null
 
           echo "Codex 리뷰를 요청했습니다."
