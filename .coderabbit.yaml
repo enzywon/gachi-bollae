@@ -1,0 +1,9 @@
+# CI에서 CodeRabbit CLI로 리뷰하고 결과를 하나의 PR 코멘트로 합친다.
+# 이 파일은 CLI와 앱 양쪽에 적용된다.
+
+language: ko-KR
+
+reviews:
+  # 앱 연결이 남아 있어도 별도 코멘트를 달지 않게 한다.
+  review_status: false
+  high_level_summary: false

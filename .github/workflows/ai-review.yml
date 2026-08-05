@@ -47,17 +47,30 @@ jobs:
             echo "empty=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Codex 리뷰
-        id: codex
+      # Codex는 CI가 아니라 OpenAI 서버에서 돈다. 여기서는 리뷰를 요청만 하고,
+      # 결과는 아래에서 GitHub API로 걷어온다. 이러면 ChatGPT 구독으로 커버되어
+      # API 크레딧을 쓰지 않는다.
+      - name: Codex 리뷰 요청
+        id: codex-request
         if: steps.diff.outputs.empty == 'false'
         continue-on-error: true
-        uses: openai/codex-action@v1
-        with:
-          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
-          permission-profile: ':workspace'
-          prompt-file: scripts/ai-review/codex-prompt.md
-          output-schema-file: scripts/ai-review/codex-schema.json
-          output-file: ai-review-out/codex.json
+        env:
+          GH_TOKEN: ${{ secrets.ENZY_WON_CODEX_REVIEW_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # secrets 컨텍스트는 스텝 if 에서 못 쓰므로 여기서 확인한다.
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "ENZY_WON_CODEX_REVIEW_TOKEN 이 없어 Codex 리뷰 요청을 건너뜁니다."
+            exit 0
+          fi
+          comment_id=$(gh api --method POST \
+            "repos/${REPOSITORY}/issues/${PR_NUMBER}/comments" \
+            --raw-field body='@codex review' --jq '.id')
+          echo "comment-id=$comment_id" >> "$GITHUB_OUTPUT"
+          echo "Codex 리뷰를 요청했습니다. (코멘트 $comment_id)"
 
       - name: CodeRabbit CLI 설치
         id: coderabbit-install
@@ -79,6 +92,43 @@ jobs:
         run: |
           coderabbit auth login --api-key "$CODERABBIT_API_KEY"
           coderabbit review --agent --base "origin/$BASE_REF" > ai-review-out/coderabbit.jsonl
+
+      - name: Node.js 설정
+        if: steps.diff.outputs.empty == 'false'
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      # CodeRabbit 리뷰가 도는 동안 Codex App도 병렬로 리뷰하고 있다.
+      # 여기서 App이 끝나기를 기다렸다가 결과를 걷어온다.
+      - name: Codex 결과 수확
+        id: codex
+        if: steps.diff.outputs.empty == 'false' && steps.codex-request.outputs.comment-id != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          node scripts/ai-review/harvest-codex.mjs \
+            --repo "${{ github.repository }}" \
+            --pr "${{ github.event.pull_request.number }}" \
+            --sha "${{ github.event.pull_request.head.sha }}" \
+            --trigger-comment-id "${{ steps.codex-request.outputs.comment-id }}" \
+            --timeout 600 \
+            --out ai-review-out/codex.json \
+            --ids-out ai-review-out/codex-node-ids.txt
+
+      # 요청 코멘트는 역할을 다했으므로 지워서 PR 대화를 깨끗하게 둔다.
+      - name: Codex 요청 코멘트 정리
+        if: always() && steps.codex-request.outputs.comment-id != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.ENZY_WON_CODEX_REVIEW_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          gh api --method DELETE \
+            "repos/${REPOSITORY}/issues/comments/${{ steps.codex-request.outputs.comment-id }}"
 
       # 리뷰어 출력 파싱이 어긋났을 때 원본을 봐야 원인을 알 수 있다.
       - name: 리뷰어 원본 출력 진단
@@ -104,13 +154,8 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
-      - name: Node.js 설정
-        if: steps.diff.outputs.empty == 'false'
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-
       - name: 리뷰 코멘트 작성
+        id: post
         if: steps.diff.outputs.empty == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -123,3 +168,12 @@ jobs:
             --status "codex=${{ steps.codex.outcome }},coderabbit=${{ steps.coderabbit.outcome }}" \
             codex=ai-review-out/codex.json \
             coderabbit=ai-review-out/coderabbit.jsonl
+
+      # 통합 코멘트가 올라간 뒤에만 접는다. 순서가 뒤바뀌면 리뷰가 사라진 것처럼 보인다.
+      - name: Codex 원본 코멘트 접기
+        if: steps.post.outcome == 'success' && steps.codex.outcome == 'success'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: node scripts/ai-review/hide-comments.mjs ai-review-out/codex-node-ids.txt

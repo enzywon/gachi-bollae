@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const MARKER = '<!-- ai-review:v1 -->';
+const BOT_LOGIN = 'github-actions[bot]';
 const COMMENT_LIMIT = 60000; // GitHub 코멘트 상한(65536)에 여유를 둔 값
 
 const SEVERITIES = ['critical', 'major', 'minor', 'nit'];
@@ -350,10 +351,12 @@ function gh(args, input) {
 
 // `gh api --paginate` 는 페이지마다 JSON 문서를 따로 뱉기 때문에 통째로 JSON.parse 하면
 // 코멘트가 한 페이지(30개)를 넘는 순간 깨진다. --jq 로 항목을 풀어 NDJSON으로 받는다.
+// 마커만 보고 고르면 아무나 그 문자열이 든 코멘트를 먼저 달아 우리 리뷰가 남의 코멘트를
+// 덮어쓰게 만들 수 있다. 작성자가 우리 봇인지도 함께 확인한다.
 function findStickyComment(repo, pr) {
   const raw = gh([
     'api', '--paginate', `repos/${repo}/issues/${pr}/comments`,
-    '--jq', '.[] | {id: .id, body: .body}',
+    '--jq', '.[] | {id: .id, body: .body, login: .user.login}',
   ]);
   for (const line of raw.split('\n')) {
     if (!line.trim()) continue;
@@ -363,6 +366,7 @@ function findStickyComment(repo, pr) {
     } catch {
       continue;
     }
+    if (comment?.login !== BOT_LOGIN) continue;
     if (typeof comment?.body === 'string' && comment.body.includes(MARKER)) return comment;
   }
   return null;
