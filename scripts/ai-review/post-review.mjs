@@ -259,12 +259,18 @@ function dedupe(findings) {
   });
 }
 
+// 경로에 공백이나 #, ? 가 있으면 링크가 끊긴다. 다만 통째로 인코딩하면 구분자 `/` 까지
+// %2F 가 되어 더 나빠지므로 세그먼트별로 인코딩한다.
+function encodePath(path) {
+  return path.split('/').map(encodeURIComponent).join('/');
+}
+
 function locationMarkdown(finding, repo, sha) {
   if (!finding.file) return '';
   const anchor = finding.line > 0 ? `#L${finding.line}` : '';
   const label = finding.line > 0 ? `${finding.file}:${finding.line}` : finding.file;
   if (!repo || !sha) return `\`${label}\``;
-  return `[\`${label}\`](https://github.com/${repo}/blob/${sha}/${finding.file}${anchor})`;
+  return `[\`${label}\`](https://github.com/${repo}/blob/${sha}/${encodePath(finding.file)}${anchor})`;
 }
 
 // 제안 코드 안에 백틱이 들어 있어도 깨지지 않도록 울타리 길이를 늘려 잡는다.
@@ -277,7 +283,9 @@ function codeBlock(code) {
 function renderFinding(finding, repo, sha) {
   const badges = finding.sources.map((s) => SOURCE_LABEL[s] ?? s).join(' · ');
   const location = locationMarkdown(finding, repo, sha);
-  const head = [location, `**${finding.title}**`].filter(Boolean).join(' — ');
+  // <summary> 는 한 줄이어야 한다. 제목에 개행이 섞여 들어오면 토글이 통째로 깨진다.
+  const title = finding.title.replace(/\s*\n+\s*/g, ' ').trim();
+  const head = [location, title && `**${title}**`].filter(Boolean).join(' — ');
 
   // 펼칠 내용이 없으면 빈 토글 대신 한 줄로 보여준다.
   if (!finding.detail && !finding.suggestion) return `- ${head} <sub>${badges}</sub>`;
@@ -338,7 +346,17 @@ function renderBody({ sources, statuses, findings, repo, sha }) {
 function truncate(body) {
   if (body.length <= COMMENT_LIMIT) return body;
   const notice = '\n\n---\n\n_리뷰 내용이 너무 길어 일부를 잘랐습니다. 전체 내용은 Actions 로그를 확인해 주세요._';
-  return `${body.slice(0, COMMENT_LIMIT - notice.length)}${notice}`;
+
+  let cut = body.slice(0, COMMENT_LIMIT - notice.length);
+  // <details> 한가운데를 자르면 닫는 태그가 사라져 이후 내용이 통째로 안 보인다.
+  // 마지막으로 온전히 닫힌 지점까지 되돌린다.
+  const opened = (cut.match(/<details>/g) ?? []).length;
+  const closed = (cut.match(/<\/details>/g) ?? []).length;
+  if (opened > closed) {
+    const lastClose = cut.lastIndexOf('</details>');
+    cut = lastClose === -1 ? cut.slice(0, cut.indexOf('<details>')) : cut.slice(0, lastClose + '</details>'.length);
+  }
+  return `${cut}${notice}`;
 }
 
 function gh(args, input) {
