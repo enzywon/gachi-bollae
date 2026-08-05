@@ -131,15 +131,30 @@ function fetchReviewComments(repo, pr) {
   ]);
 }
 
-function fetchReactionLogins(repo, commentId) {
-  if (!commentId) return [];
+// 앱은 지적이 없을 때만 👍 로 반응한다. 👀 같은 "접수했음" 반응까지 완료로 보면
+// 리뷰가 오기도 전에 0건으로 단정하게 된다.
+function hasThumbsUp(repo, commentId, bot) {
+  if (!commentId) return false;
   try {
     return ghJsonLines([
       'api', '--paginate', `repos/${repo}/issues/comments/${commentId}/reactions`,
-      '--jq', '.[] | {login: .user.login}',
-    ]).map((r) => r.login);
+      '--jq', '.[] | {login: .user.login, content}',
+    ]).some((r) => r.login === bot && r.content === '+1');
   } catch {
-    return [];
+    return false;
+  }
+}
+
+// 앱이 리뷰 대신 안내문을 코멘트로 남기는 경우가 있다(계정 연결 필요 등).
+// 그대로 기다리면 타임아웃까지 시간을 버리므로 종료 신호로 취급한다.
+function findBotReply(repo, pr, bot, sinceIso) {
+  try {
+    return ghJsonLines([
+      'api', '--paginate', `repos/${repo}/issues/${pr}/comments`,
+      '--jq', '.[] | {login: .user.login, created_at, body}',
+    ]).find((c) => c.login === bot && c.created_at >= sinceIso) ?? null;
+  } catch {
+    return null;
   }
 }
 
@@ -173,17 +188,25 @@ async function main() {
     process.exit(64);
   }
 
+  const startedAt = new Date().toISOString();
   const deadline = Date.now() + Number(opts.timeout) * 1000;
   let reason = '';
+  let failed = false;
 
   while (Date.now() < deadline && !reason) {
     if (fetchReviews(opts.repo, opts.pr).some((r) => r.login === source.bot && r.commit_id === opts.sha)) {
       reason = '리뷰 게시됨';
       break;
     }
-    // 지적할 게 없으면 앱이 코멘트 대신 요청 코멘트에 반응만 남기기도 한다.
-    if (fetchReactionLogins(opts.repo, opts['trigger-comment-id']).includes(source.bot)) {
-      reason = '지적 없음(반응만 남김)';
+    if (hasThumbsUp(opts.repo, opts['trigger-comment-id'], source.bot)) {
+      reason = '지적 없음(👍 반응)';
+      break;
+    }
+    // 리뷰 대신 안내문을 남겼다면 더 기다려도 소용없다.
+    const reply = findBotReply(opts.repo, opts.pr, source.bot, startedAt);
+    if (reply) {
+      console.error(`${opts.source} 가 리뷰 대신 안내문을 남겼습니다: ${reply.body.split('\n')[0].slice(0, 160)}`);
+      failed = true;
       break;
     }
 
@@ -192,7 +215,8 @@ async function main() {
   }
 
   if (!reason) {
-    console.error(`${opts.source} 리뷰를 기다리다 시간이 초과됐습니다. 이번 실행에서는 건너뜁니다.`);
+    if (!failed) console.error(`${opts.source} 리뷰를 기다리다 시간이 초과됐습니다.`);
+    console.error(`${opts.source}: 이번 실행에서는 건너뜁니다.`);
     if (opts.out) writeFileSync(opts.out, JSON.stringify({ summary: '', findings: [] }), 'utf8');
     if (opts['ids-out']) writeFileSync(opts['ids-out'], '', 'utf8');
     process.exit(1);
