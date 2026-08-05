@@ -18,3 +18,10 @@
 - Do not mark a PR ready, approve it, or merge it unless the user explicitly asks.
 
 Use `npm run pr:start -- <type> <slug>` when starting a new task and `npm run pr:open` after committing it.
+
+## Code review
+
+- Write all pull request review comments in Korean, including the title and body of
+  each finding. Keep code identifiers, file paths, and error messages as they are.
+- Review only the lines the pull request changes.
+- Do not report anything the linter or formatter already catches.
