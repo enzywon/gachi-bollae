@@ -20,7 +20,7 @@ Review as an independent teammate. Prefer a few actionable findings over broad c
 - Correctness and user-visible regressions
 - Lost updates, stale state, races, and incomplete error handling
 - React rendering and state-management mistakes
-- Cloudflare Worker runtime and binding constraints
+- Next.js server and client component boundary mistakes
 - Backward compatibility and migration safety
 
 Defer deep security analysis to `$security-reviewer` and test design to `$test-reviewer` when those scopes are material.
