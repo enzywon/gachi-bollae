@@ -30,7 +30,8 @@ jobs:
           # AI 리뷰어가 작업 트리 안에서 도는 만큼 .git/config 에 토큰을 남기지 않는다.
           persist-credentials: false
 
-      - name: 변경 사항 추출
+      # 리뷰어들은 각자 diff를 계산한다. 여기서는 리뷰할 게 있는지만 판정한다.
+      - name: 변경 여부 확인
         id: diff
         env:
           BASE_REF: ${{ github.event.pull_request.base.ref }}
@@ -38,20 +39,19 @@ jobs:
         run: |
           mkdir -p ai-review-out
           base_sha=$(git merge-base "origin/$BASE_REF" HEAD)
-          git diff "$base_sha" HEAD > ai-review-out/pr.diff
-          echo "base-sha=$base_sha" >> "$GITHUB_OUTPUT"
-          if [ ! -s ai-review-out/pr.diff ]; then
+          if git diff --quiet "$base_sha" HEAD; then
             echo "변경 사항이 없어 리뷰를 건너뜁니다."
             echo "empty=true" >> "$GITHUB_OUTPUT"
           else
             echo "empty=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # Codex는 CI가 아니라 OpenAI 서버에서 돈다. 여기서는 리뷰를 요청만 하고,
-      # 결과는 아래에서 GitHub API로 걷어온다. 이러면 ChatGPT 구독으로 커버되어
-      # API 크레딧을 쓰지 않는다.
-      - name: Codex 리뷰 요청
-        id: codex-request
+      # 두 리뷰어 모두 자기네 서버에서 돈다. 여기서는 리뷰를 요청만 하고 결과는
+      # 아래에서 GitHub API로 걷어온다. 그래야 각자의 구독으로 커버되어
+      # 별도 API 요금이 발생하지 않는다.
+      # 요청을 먼저 깔아둬야 두 리뷰가 병렬로 진행된다.
+      - name: 리뷰 요청
+        id: request
         if: steps.diff.outputs.empty == 'false'
         continue-on-error: true
         env:
@@ -63,35 +63,19 @@ jobs:
           set -euo pipefail
           # secrets 컨텍스트는 스텝 if 에서 못 쓰므로 여기서 확인한다.
           if [ -z "${GH_TOKEN:-}" ]; then
-            echo "ENZY_WON_CODEX_REVIEW_TOKEN 이 없어 Codex 리뷰 요청을 건너뜁니다."
+            echo "ENZY_WON_CODEX_REVIEW_TOKEN 이 없어 리뷰 요청을 건너뜁니다."
             exit 0
           fi
-          comment_id=$(gh api --method POST \
-            "repos/${REPOSITORY}/issues/${PR_NUMBER}/comments" \
-            --raw-field body='@codex review' --jq '.id')
-          echo "comment-id=$comment_id" >> "$GITHUB_OUTPUT"
-          echo "Codex 리뷰를 요청했습니다. (코멘트 $comment_id)"
-
-      - name: CodeRabbit CLI 설치
-        id: coderabbit-install
-        if: steps.diff.outputs.empty == 'false'
-        continue-on-error: true
-        shell: bash
-        run: |
-          curl -fsSL https://cli.coderabbit.ai/install.sh | sh
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
-      - name: CodeRabbit 리뷰
-        id: coderabbit
-        if: steps.diff.outputs.empty == 'false' && steps.coderabbit-install.outcome == 'success'
-        continue-on-error: true
-        env:
-          CODERABBIT_API_KEY: ${{ secrets.CODERABBIT_API_KEY }}
-          BASE_REF: ${{ github.event.pull_request.base.ref }}
-        shell: bash
-        run: |
-          coderabbit auth login --api-key "$CODERABBIT_API_KEY"
-          coderabbit review --agent --base "origin/$BASE_REF" > ai-review-out/coderabbit.jsonl
+          # 앱은 draft PR을 자동 리뷰하지 않으므로 명시적으로 요청한다.
+          for entry in "codex:@codex review" "coderabbit:@coderabbitai review"; do
+            name="${entry%%:*}"
+            body="${entry#*:}"
+            id=$(gh api --method POST \
+              "repos/${REPOSITORY}/issues/${PR_NUMBER}/comments" \
+              --raw-field body="$body" --jq '.id')
+            echo "${name}-comment-id=$id" >> "$GITHUB_OUTPUT"
+            echo "$name 리뷰를 요청했습니다. (코멘트 $id)"
+          done
 
       - name: Node.js 설정
         if: steps.diff.outputs.empty == 'false'
@@ -99,43 +83,63 @@ jobs:
         with:
           node-version: 24
 
-      # CodeRabbit 리뷰가 도는 동안 Codex App도 병렬로 리뷰하고 있다.
-      # 여기서 App이 끝나기를 기다렸다가 결과를 걷어온다.
       - name: Codex 결과 수확
         id: codex
-        if: steps.diff.outputs.empty == 'false' && steps.codex-request.outputs.comment-id != ''
+        # 요청이 실패해도(앱이 스스로 리뷰한 경우) 수확은 시도한다. 다만 요청을 못 보냈으면
+        # 리뷰가 올 근거가 약하므로 짧게만 기다린다.
+        if: steps.diff.outputs.empty == 'false'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          node scripts/ai-review/harvest-codex.mjs \
+          node scripts/ai-review/harvest.mjs --source codex \
             --repo "${{ github.repository }}" \
             --pr "${{ github.event.pull_request.number }}" \
             --sha "${{ github.event.pull_request.head.sha }}" \
-            --trigger-comment-id "${{ steps.codex-request.outputs.comment-id }}" \
-            --timeout 600 \
+            --trigger-comment-id "${{ steps.request.outputs.codex-comment-id }}" \
+            --timeout "${{ steps.request.outputs.codex-comment-id != '' && 600 || 120 }}" \
             --out ai-review-out/codex.json \
             --ids-out ai-review-out/codex-node-ids.txt
 
+      - name: CodeRabbit 결과 수확
+        id: coderabbit
+        if: steps.diff.outputs.empty == 'false'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          node scripts/ai-review/harvest.mjs --source coderabbit \
+            --repo "${{ github.repository }}" \
+            --pr "${{ github.event.pull_request.number }}" \
+            --sha "${{ github.event.pull_request.head.sha }}" \
+            --trigger-comment-id "${{ steps.request.outputs.coderabbit-comment-id }}" \
+            --timeout "${{ steps.request.outputs.coderabbit-comment-id != '' && 600 || 120 }}" \
+            --out ai-review-out/coderabbit.json \
+            --ids-out ai-review-out/coderabbit-node-ids.txt
+
       # 요청 코멘트는 역할을 다했으므로 지워서 PR 대화를 깨끗하게 둔다.
-      - name: Codex 요청 코멘트 정리
-        if: always() && steps.codex-request.outputs.comment-id != ''
+      - name: 요청 코멘트 정리
+        if: always() && steps.request.outputs.codex-comment-id != ''
         continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.ENZY_WON_CODEX_REVIEW_TOKEN }}
           REPOSITORY: ${{ github.repository }}
         shell: bash
         run: |
-          gh api --method DELETE \
-            "repos/${REPOSITORY}/issues/comments/${{ steps.codex-request.outputs.comment-id }}"
+          for id in "${{ steps.request.outputs.codex-comment-id }}" \
+                    "${{ steps.request.outputs.coderabbit-comment-id }}"; do
+            [ -n "$id" ] || continue
+            gh api --method DELETE "repos/${REPOSITORY}/issues/comments/$id" || true
+          done
 
       # 리뷰어 출력 파싱이 어긋났을 때 원본을 봐야 원인을 알 수 있다.
       - name: 리뷰어 원본 출력 진단
         if: always() && steps.diff.outputs.empty == 'false'
         shell: bash
         run: |
-          for file in ai-review-out/codex.json ai-review-out/coderabbit.jsonl; do
+          for file in ai-review-out/codex.json ai-review-out/coderabbit.json; do
             if [ -s "$file" ]; then
               echo "--- $file ($(wc -c < "$file") bytes) ---"
               head -c 3000 "$file"
@@ -167,13 +171,18 @@ jobs:
             --sha "${{ github.event.pull_request.head.sha }}" \
             --status "codex=${{ steps.codex.outcome }},coderabbit=${{ steps.coderabbit.outcome }}" \
             codex=ai-review-out/codex.json \
-            coderabbit=ai-review-out/coderabbit.jsonl
+            coderabbit=ai-review-out/coderabbit.json
 
       # 통합 코멘트가 올라간 뒤에만 접는다. 순서가 뒤바뀌면 리뷰가 사라진 것처럼 보인다.
-      - name: Codex 원본 코멘트 접기
-        if: steps.post.outcome == 'success' && steps.codex.outcome == 'success'
+      - name: 원본 코멘트 접기
+        if: steps.post.outcome == 'success'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
-        run: node scripts/ai-review/hide-comments.mjs ai-review-out/codex-node-ids.txt
+        run: |
+          [ "${{ steps.codex.outcome }}" = "success" ] \
+            && node scripts/ai-review/hide-comments.mjs ai-review-out/codex-node-ids.txt
+          [ "${{ steps.coderabbit.outcome }}" = "success" ] \
+            && node scripts/ai-review/hide-comments.mjs ai-review-out/coderabbit-node-ids.txt
+          exit 0
