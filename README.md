@@ -1,4 +1,18 @@
+<div align="center">
+
 # 같이볼래
+
+**상황과 취향에 맞춰, 오늘 볼 콘텐츠를 3분 안에**
+
+[![CI](https://github.com/enzywon/gachi-bollae/actions/workflows/ci.yml/badge.svg)](https://github.com/enzywon/gachi-bollae/actions/workflows/ci.yml)
+[![Live Demo](https://img.shields.io/badge/demo-gachi--bollae.vercel.app-000000?logo=vercel&logoColor=white)](https://gachi-bollae.vercel.app)
+
+![Next.js](https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white)
+![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?logo=typescript&logoColor=white)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind%20CSS-4-06B6D4?logo=tailwindcss&logoColor=white)
+
+</div>
 
 혼자 또는 함께 볼 콘텐츠를 상황과 취향에 맞춰 추천해 주는 웹 애플리케이션입니다.
 
