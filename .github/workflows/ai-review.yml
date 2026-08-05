@@ -65,10 +65,15 @@ jobs:
         run: |
           set -uo pipefail
 
+          # gh api 는 실패해도 응답 본문을 stdout 으로 뱉는다. 코멘트 id 는 숫자이므로
+          # 숫자가 아니면 실패로 본다. 이 검증이 없으면 에러 JSON 을 id 로 착각한다.
           post() {
-            GH_TOKEN="$1" gh api --method POST \
+            local out
+            out=$(GH_TOKEN="$1" gh api --method POST \
               "repos/${REPOSITORY}/issues/${PR_NUMBER}/comments" \
-              --raw-field body="$2" --jq '.id' 2>/dev/null
+              --raw-field body="$2" --jq '.id' 2>/dev/null) || return 1
+            [[ "$out" =~ ^[0-9]+$ ]] || return 1
+            printf '%s' "$out"
           }
 
           # 앱은 draft PR을 자동 리뷰하지 않으므로 명시적으로 요청한다.
