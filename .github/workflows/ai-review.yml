@@ -78,6 +78,30 @@ jobs:
           coderabbit auth login --api-key "$CODERABBIT_API_KEY"
           coderabbit review --agent --base "origin/$BASE_REF" > ai-review-out/coderabbit.jsonl
 
+      # 리뷰어 출력 파싱이 어긋났을 때 원본을 봐야 원인을 알 수 있다.
+      - name: 리뷰어 원본 출력 진단
+        if: always() && steps.diff.outputs.empty == 'false'
+        shell: bash
+        run: |
+          for file in ai-review-out/codex.json ai-review-out/coderabbit.jsonl; do
+            if [ -s "$file" ]; then
+              echo "--- $file ($(wc -c < "$file") bytes) ---"
+              head -c 3000 "$file"
+              echo
+            else
+              echo "--- $file: 비어 있거나 없음 ---"
+            fi
+          done
+
+      - name: 리뷰어 원본 출력 업로드
+        if: always() && steps.diff.outputs.empty == 'false'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-review-raw
+          path: ai-review-out/
+          retention-days: 7
+          if-no-files-found: warn
+
       - name: Node.js 설정
         if: steps.diff.outputs.empty == 'false'
         uses: actions/setup-node@v6
