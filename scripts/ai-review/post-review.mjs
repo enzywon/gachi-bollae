@@ -97,27 +97,74 @@ function firstNumber(obj, keys) {
   return 0;
 }
 
+// 키 이름은 리뷰어마다 제각각이라 후보를 넉넉히 둔다. 대소문자 표기도 서로 다르다.
+const FILE_KEYS = ['file', 'path', 'file_path', 'filePath', 'filename', 'fileName'];
+const DETAIL_KEYS = [
+  'detail', 'description', 'message', 'body', 'comment', 'rationale', 'codegenInstructions',
+];
+const TITLE_KEYS = ['title', 'summary', 'headline', 'name'];
+const LINE_KEYS = ['line', 'line_number', 'lineNumber', 'start_line', 'startLine', 'start'];
+const SUGGESTION_KEYS = ['suggestion', 'fix', 'patch', 'replacement', 'suggested_fix'];
+
 function looksLikeFinding(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const hasLocation = firstString(value, ['file', 'path', 'file_path', 'filePath', 'filename']);
-  const hasMessage = firstString(value, [
-    'detail', 'description', 'message', 'body', 'comment', 'title', 'summary',
-  ]);
-  return Boolean(hasLocation && hasMessage);
+  return Boolean(firstString(value, FILE_KEYS) && firstString(value, [...DETAIL_KEYS, ...TITLE_KEYS]));
+}
+
+// CodeRabbit의 `codegenInstructions` 는 에이전트용 지시문이라 사람이 읽을 코멘트에는
+// 군더더기가 붙어 있다. 고정 서문과 위치 접두사를 떼어내고 줄 번호만 건져낸다.
+function refineDetail(text) {
+  let body = text;
+  let line = 0;
+
+  const paragraphs = body.split('\n\n');
+  if (paragraphs.length > 1 && /^Verify each finding against current code/.test(paragraphs[0])) {
+    body = paragraphs.slice(1).join('\n\n').trim();
+  }
+
+  const location = body.match(/^In @?\S+\s+around lines?\s+(\d+)(?:\s*[-–]\s*\d+)?\s*,\s*/i);
+  if (location) {
+    line = Number(location[1]);
+    body = body.slice(location[0].length).trim();
+  }
+
+  return { body, line };
+}
+
+// 단어 중간에서 끊기지 않게 자른다.
+function clip(text, limit) {
+  if (text.length <= limit) return text;
+  const head = text.slice(0, limit);
+  const lastSpace = head.lastIndexOf(' ');
+  return `${(lastSpace > limit * 0.6 ? head.slice(0, lastSpace) : head).trimEnd()}…`;
+}
+
+function readSuggestion(raw) {
+  const direct = firstString(raw, SUGGESTION_KEYS);
+  if (direct) return direct;
+  // CodeRabbit은 `suggestions` 배열로 준다. 문자열일 수도, 객체일 수도 있다.
+  const list = raw.suggestions;
+  if (!Array.isArray(list) || list.length === 0) return '';
+  return list
+    .map((item) => (typeof item === 'string' ? item : firstString(item ?? {}, [...SUGGESTION_KEYS, 'code', 'text'])))
+    .filter(Boolean)
+    .join('\n');
 }
 
 function toFinding(raw, source) {
-  const detail = firstString(raw, ['detail', 'description', 'message', 'body', 'comment', 'rationale']);
-  // 제목 필드가 없는 리뷰어는 본문 첫 줄을 제목으로 쓴다. 그 경우 본문을 또 보여주지 않는다.
-  const title = firstString(raw, ['title', 'summary', 'headline', 'name']) || detail.split('\n')[0].slice(0, 80);
+  const refined = refineDetail(firstString(raw, DETAIL_KEYS));
+  const detail = refined.body;
+  // 제목 필드가 없는 리뷰어는 본문 첫 문장을 제목으로 쓴다. 그 경우 본문을 또 보여주지 않는다.
+  const title = firstString(raw, TITLE_KEYS)
+    || clip(detail.split('\n')[0].split(/(?<=[.。])\s/)[0], 100);
   return {
     source,
-    severity: normalizeSeverity(firstString(raw, ['severity', 'level', 'priority', 'category', 'type'])),
-    file: firstString(raw, ['file', 'path', 'file_path', 'filePath', 'filename']),
-    line: firstNumber(raw, ['line', 'line_number', 'lineNumber', 'start_line', 'startLine', 'start']),
+    severity: normalizeSeverity(firstString(raw, ['severity', 'level', 'priority', 'category'])),
+    file: firstString(raw, FILE_KEYS),
+    line: firstNumber(raw, LINE_KEYS) || refined.line,
     title,
     detail: detail && detail !== title ? detail : '',
-    suggestion: firstString(raw, ['suggestion', 'fix', 'patch', 'replacement', 'suggested_fix']),
+    suggestion: readSuggestion(raw),
   };
 }
 
@@ -301,16 +348,24 @@ function gh(args, input) {
   });
 }
 
+// `gh api --paginate` 는 페이지마다 JSON 문서를 따로 뱉기 때문에 통째로 JSON.parse 하면
+// 코멘트가 한 페이지(30개)를 넘는 순간 깨진다. --jq 로 항목을 풀어 NDJSON으로 받는다.
 function findStickyComment(repo, pr) {
-  const raw = gh(['api', '--paginate', `repos/${repo}/issues/${pr}/comments`]);
-  let comments;
-  try {
-    comments = JSON.parse(raw);
-  } catch {
-    return null;
+  const raw = gh([
+    'api', '--paginate', `repos/${repo}/issues/${pr}/comments`,
+    '--jq', '.[] | {id: .id, body: .body}',
+  ]);
+  for (const line of raw.split('\n')) {
+    if (!line.trim()) continue;
+    let comment;
+    try {
+      comment = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (typeof comment?.body === 'string' && comment.body.includes(MARKER)) return comment;
   }
-  if (!Array.isArray(comments)) return null;
-  return comments.find((c) => typeof c?.body === 'string' && c.body.includes(MARKER)) ?? null;
+  return null;
 }
 
 function upsertComment(repo, pr, body) {

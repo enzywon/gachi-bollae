@@ -27,6 +27,8 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
+          # AI 리뷰어가 작업 트리 안에서 도는 만큼 .git/config 에 토큰을 남기지 않는다.
+          persist-credentials: false
 
       - name: 변경 사항 추출
         id: diff
