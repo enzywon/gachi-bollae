@@ -164,9 +164,24 @@ function fetchBotIssueComments(repo, pr, bot, sinceIso) {
     return ghJsonLines([
       'api', '--paginate', `repos/${repo}/issues/${pr}/comments`,
       '--jq', '.[] | {node_id, login: .user.login, created_at, body}',
-    ]).filter((c) => c.login === bot && c.created_at >= sinceIso);
+    ]).filter((c) => c.login === bot && (!sinceIso || c.created_at >= sinceIso));
   } catch {
     return [];
+  }
+}
+
+// 리뷰 요청을 올린 시각. 앱의 응답인지 이전 실행의 잔재인지 가르는 기준이 된다.
+// 수확 스텝이 시작한 시각을 쓰면 안 된다. 리뷰어별로 수확이 순차 실행되어
+// 뒤 순서의 수확은 자기 요청보다 한참 뒤에 시작하기 때문이다.
+function fetchTriggerTime(repo, commentId) {
+  if (!commentId) return new Date().toISOString();
+  try {
+    const [comment] = ghJsonLines([
+      'api', `repos/${repo}/issues/comments/${commentId}`, '--jq', '{created_at}',
+    ]);
+    return comment?.created_at ?? new Date().toISOString();
+  } catch {
+    return new Date().toISOString();
   }
 }
 
@@ -179,11 +194,17 @@ function findBlockingReply(repo, pr, source, sinceIso) {
     .find((c) => source.blocked.test(c.body ?? '')) ?? null;
 }
 
-// 리뷰 요청에 대한 접수 회신은 내용이 없어 PR 대화만 어지럽힌다.
+// 접수 회신은 내용이 없어 PR 대화만 어지럽힌다. 지난 실행에서 쌓인 것까지 함께
+// 접어야 PR이 깨끗해지므로 시각으로 거르지 않는다.
+// "리뷰 불가" 안내문은 지금 것만 남기고 지난 것은 접는다. 이미 해소된 문제를
+// 계속 보여줄 이유가 없다.
 function findNoiseCommentIds(repo, pr, source, sinceIso) {
-  if (!source.noise) return [];
-  return fetchBotIssueComments(repo, pr, source.bot, sinceIso)
-    .filter((c) => source.noise.test(c.body ?? ''))
+  return fetchBotIssueComments(repo, pr, source.bot, '')
+    .filter((c) => {
+      const body = c.body ?? '';
+      if (source.noise?.test(body)) return true;
+      return source.blocked?.test(body) && c.created_at < sinceIso;
+    })
     .map((c) => c.node_id)
     .filter(Boolean);
 }
@@ -218,7 +239,7 @@ async function main() {
     process.exit(64);
   }
 
-  const startedAt = new Date().toISOString();
+  const startedAt = fetchTriggerTime(opts.repo, opts['trigger-comment-id']);
   const deadline = Date.now() + Number(opts.timeout) * 1000;
   let reason = '';
   let failed = false;
