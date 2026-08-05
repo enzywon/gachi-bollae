@@ -81,7 +81,13 @@ test("홈 화면을 서버에서 HTML로 렌더링한다", async () => {
       "첫 화면의 모드 선택 카드가 렌더링되지 않았습니다.",
     );
   } finally {
-    server.kill("SIGTERM");
-    await once(server, "exit");
+    // The server may already be gone — waitForReady throws on early exit. Awaiting
+    // "exit" after it fired would hang, so only wait while it is still running.
+    // `exitCode` stays null when a child dies from a signal, hence both checks.
+    if (server.exitCode === null && server.signalCode === null) {
+      const exited = once(server, "exit");
+      server.kill("SIGTERM");
+      await exited;
+    }
   }
 });
