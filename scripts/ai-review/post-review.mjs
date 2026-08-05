@@ -237,6 +237,8 @@ function readSource({ name, path }) {
 
 function dedupe(findings) {
   const byKey = new Map();
+  let serial = 0;
+
   for (const finding of findings) {
     const key = `${finding.file}:${finding.line}:${finding.title.toLowerCase()}`;
     const existing = byKey.get(key);
@@ -244,6 +246,15 @@ function dedupe(findings) {
       byKey.set(key, { ...finding, sources: [finding.source] });
       continue;
     }
+
+    // 한 리뷰어가 같은 위치·제목으로 서로 다른 내용을 지적할 수 있다. 이걸 병합하면
+    // 한쪽이 사라지므로, 같은 리뷰어의 다른 내용은 별개 항목으로 남긴다.
+    if (existing.sources.includes(finding.source) && existing.detail !== finding.detail) {
+      serial += 1;
+      byKey.set(`${key}#${serial}`, { ...finding, sources: [finding.source] });
+      continue;
+    }
+
     // 두 리뷰어가 같은 곳을 지적하면 한 항목으로 묶고 더 높은 심각도를 채택한다.
     if (!existing.sources.includes(finding.source)) existing.sources.push(finding.source);
     if (SEVERITIES.indexOf(finding.severity) < SEVERITIES.indexOf(existing.severity)) {

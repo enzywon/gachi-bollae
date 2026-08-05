@@ -16,8 +16,10 @@ import { writeFileSync } from 'node:fs';
 
 const POLL_INTERVAL_MS = 15000;
 
-// Codex는 심각도를 P1~P3 뱃지 이미지로 표시한다.
-const PRIORITY_SEVERITY = { P1: 'critical', P2: 'major', P3: 'minor' };
+// Codex는 심각도를 P0~P3 뱃지 이미지로 표시한다. P0가 가장 긴급하다.
+const PRIORITY_SEVERITY = {
+  P0: 'critical', P1: 'critical', P2: 'major', P3: 'minor',
+};
 
 function gh(args) {
   return execFileSync('gh', args, { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
@@ -43,7 +45,7 @@ function extractSuggestion(body) {
 
 // Codex: "**<sub><sub>![P2 Badge](...)</sub></sub>  제목**\n\n본문..."
 function parseCodex(body) {
-  const priority = body.match(/!\[(P[123])\s+Badge\]/i);
+  const priority = body.match(/!\[(P[0123])\s+Badge\]/i);
   const severity = PRIORITY_SEVERITY[priority?.[1]?.toUpperCase()] ?? 'major';
 
   const lines = body.split('\n');
@@ -98,8 +100,20 @@ function parseCodeRabbit(body) {
 }
 
 const SOURCES = {
-  codex: { bot: 'chatgpt-codex-connector[bot]', parse: parseCodex },
-  coderabbit: { bot: 'coderabbitai[bot]', parse: parseCodeRabbit },
+  codex: {
+    bot: 'chatgpt-codex-connector[bot]',
+    parse: parseCodex,
+    // 리뷰를 못 하겠다고 알려오는 안내문. 이게 오면 더 기다려도 소용없다.
+    blocked: /create a Codex account|connect to github/i,
+    // 리뷰 내용이 없는 접수 회신. 통합 코멘트에 이미 반영됐으므로 접는다.
+    noise: null,
+  },
+  coderabbit: {
+    bot: 'coderabbitai[bot]',
+    parse: parseCodeRabbit,
+    blocked: /Review skipped/i,
+    noise: /auto-generated reply by CodeRabbit/i,
+  },
 };
 
 function parseArgs(argv) {
@@ -145,17 +159,33 @@ function hasThumbsUp(repo, commentId, bot) {
   }
 }
 
-// 앱이 리뷰 대신 안내문을 코멘트로 남기는 경우가 있다(계정 연결 필요 등).
-// 그대로 기다리면 타임아웃까지 시간을 버리므로 종료 신호로 취급한다.
-function findBotReply(repo, pr, bot, sinceIso) {
+function fetchBotIssueComments(repo, pr, bot, sinceIso) {
   try {
     return ghJsonLines([
       'api', '--paginate', `repos/${repo}/issues/${pr}/comments`,
-      '--jq', '.[] | {login: .user.login, created_at, body}',
-    ]).find((c) => c.login === bot && c.created_at >= sinceIso) ?? null;
+      '--jq', '.[] | {node_id, login: .user.login, created_at, body}',
+    ]).filter((c) => c.login === bot && c.created_at >= sinceIso);
   } catch {
-    return null;
+    return [];
   }
+}
+
+// 앱이 리뷰 대신 "리뷰할 수 없다"는 안내문을 남기는 경우가 있다(계정 연결 필요 등).
+// 그때만 종료 신호로 본다. 접수 회신 같은 일반 코멘트까지 실패로 처리하면
+// 리뷰가 도착하기도 전에 폴링을 멈춰 결과를 통째로 놓친다.
+function findBlockingReply(repo, pr, source, sinceIso) {
+  if (!source.blocked) return null;
+  return fetchBotIssueComments(repo, pr, source.bot, sinceIso)
+    .find((c) => source.blocked.test(c.body ?? '')) ?? null;
+}
+
+// 리뷰 요청에 대한 접수 회신은 내용이 없어 PR 대화만 어지럽힌다.
+function findNoiseCommentIds(repo, pr, source, sinceIso) {
+  if (!source.noise) return [];
+  return fetchBotIssueComments(repo, pr, source.bot, sinceIso)
+    .filter((c) => source.noise.test(c.body ?? ''))
+    .map((c) => c.node_id)
+    .filter(Boolean);
 }
 
 function harvest(repo, pr, sha, source) {
@@ -202,10 +232,10 @@ async function main() {
       reason = '지적 없음(👍 반응)';
       break;
     }
-    // 리뷰 대신 안내문을 남겼다면 더 기다려도 소용없다.
-    const reply = findBotReply(opts.repo, opts.pr, source.bot, startedAt);
-    if (reply) {
-      console.error(`${opts.source} 가 리뷰 대신 안내문을 남겼습니다: ${reply.body.split('\n')[0].slice(0, 160)}`);
+    // 리뷰 대신 "리뷰할 수 없다"는 안내문을 남겼다면 더 기다려도 소용없다.
+    const blocked = findBlockingReply(opts.repo, opts.pr, source, startedAt);
+    if (blocked) {
+      console.error(`${opts.source} 가 리뷰할 수 없다고 알려왔습니다: ${blocked.body.split('\n')[0].slice(0, 160)}`);
       failed = true;
       break;
     }
@@ -223,10 +253,11 @@ async function main() {
   }
 
   const { findings, nodeIds } = harvest(opts.repo, opts.pr, opts.sha, source);
-  console.log(`${opts.source} 수확 완료 (${reason}): ${findings.length}건`);
+  const noiseIds = findNoiseCommentIds(opts.repo, opts.pr, source, startedAt);
+  console.log(`${opts.source} 수확 완료 (${reason}): ${findings.length}건, 접을 코멘트 ${nodeIds.length + noiseIds.length}건`);
 
   if (opts.out) writeFileSync(opts.out, JSON.stringify({ summary: '', findings }, null, 2), 'utf8');
-  if (opts['ids-out']) writeFileSync(opts['ids-out'], nodeIds.join('\n'), 'utf8');
+  if (opts['ids-out']) writeFileSync(opts['ids-out'], [...nodeIds, ...noiseIds].join('\n'), 'utf8');
 }
 
 main();

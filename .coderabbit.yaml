@@ -7,3 +7,8 @@ reviews:
   # 앱 연결이 남아 있어도 별도 코멘트를 달지 않게 한다.
   review_status: false
   high_level_summary: false
+  auto_review:
+    # CI가 draft 여부와 무관하게 @coderabbitai review 로 직접 요청한다.
+    # 자동 리뷰까지 켜두면 같은 커밋을 두 번 리뷰해 할당량을 두 배로 쓰고,
+    # 인라인 코멘트도 두 벌 생긴다.
+    enabled: false
