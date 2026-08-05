@@ -9,6 +9,8 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  # PR 대화 코멘트는 이슈 코멘트로 취급된다. 요청 코멘트를 달고 지우는 데 필요하다.
+  issues: write
 
 concurrency:
   group: ai-review-${{ github.event.pull_request.number }}
@@ -55,24 +57,39 @@ jobs:
         if: steps.diff.outputs.empty == 'false'
         continue-on-error: true
         env:
-          GH_TOKEN: ${{ secrets.ENZY_WON_CODEX_REVIEW_TOKEN }}
+          USER_TOKEN: ${{ secrets.ENZY_WON_CODEX_REVIEW_TOKEN }}
+          ACTIONS_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         shell: bash
         run: |
-          set -euo pipefail
-          # secrets 컨텍스트는 스텝 if 에서 못 쓰므로 여기서 확인한다.
-          if [ -z "${GH_TOKEN:-}" ]; then
-            echo "ENZY_WON_CODEX_REVIEW_TOKEN 이 없어 리뷰 요청을 건너뜁니다."
-            exit 0
-          fi
+          set -uo pipefail
+
+          post() {
+            GH_TOKEN="$1" gh api --method POST \
+              "repos/${REPOSITORY}/issues/${PR_NUMBER}/comments" \
+              --raw-field body="$2" --jq '.id' 2>/dev/null
+          }
+
           # 앱은 draft PR을 자동 리뷰하지 않으므로 명시적으로 요청한다.
+          # 사용자 토큰을 먼저 쓰고(구독 귀속이 명확하다) 안 되면 Actions 토큰으로 넘어간다.
           for entry in "codex:@codex review" "coderabbit:@coderabbitai review"; do
             name="${entry%%:*}"
             body="${entry#*:}"
-            id=$(gh api --method POST \
-              "repos/${REPOSITORY}/issues/${PR_NUMBER}/comments" \
-              --raw-field body="$body" --jq '.id')
+
+            id=""
+            if [ -n "${USER_TOKEN:-}" ]; then
+              id=$(post "$USER_TOKEN" "$body") || true
+            fi
+            if [ -z "$id" ]; then
+              echo "$name: 사용자 토큰으로 요청하지 못해 Actions 토큰으로 재시도합니다."
+              id=$(post "$ACTIONS_TOKEN" "$body") || true
+            fi
+
+            if [ -z "$id" ]; then
+              echo "$name 리뷰를 요청하지 못했습니다."
+              continue
+            fi
             echo "${name}-comment-id=$id" >> "$GITHUB_OUTPUT"
             echo "$name 리뷰를 요청했습니다. (코멘트 $id)"
           done
@@ -121,17 +138,23 @@ jobs:
 
       # 요청 코멘트는 역할을 다했으므로 지워서 PR 대화를 깨끗하게 둔다.
       - name: 요청 코멘트 정리
-        if: always() && steps.request.outputs.codex-comment-id != ''
+        if: always()
         continue-on-error: true
         env:
-          GH_TOKEN: ${{ secrets.ENZY_WON_CODEX_REVIEW_TOKEN }}
+          USER_TOKEN: ${{ secrets.ENZY_WON_CODEX_REVIEW_TOKEN }}
+          ACTIONS_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
         shell: bash
         run: |
           for id in "${{ steps.request.outputs.codex-comment-id }}" \
                     "${{ steps.request.outputs.coderabbit-comment-id }}"; do
             [ -n "$id" ] || continue
-            gh api --method DELETE "repos/${REPOSITORY}/issues/comments/$id" || true
+            # 누가 달았든 지울 수 있어야 하므로 두 토큰을 차례로 시도한다.
+            GH_TOKEN="${USER_TOKEN:-$ACTIONS_TOKEN}" gh api --method DELETE \
+              "repos/${REPOSITORY}/issues/comments/$id" 2>/dev/null \
+              || GH_TOKEN="$ACTIONS_TOKEN" gh api --method DELETE \
+                "repos/${REPOSITORY}/issues/comments/$id" 2>/dev/null \
+              || echo "요청 코멘트 $id 를 지우지 못했습니다."
           done
 
       # 리뷰어 출력 파싱이 어긋났을 때 원본을 봐야 원인을 알 수 있다.
