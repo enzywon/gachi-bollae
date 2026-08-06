@@ -1,123 +1,14 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
+import RatingSheet, { type RatingSheetValues } from "./_components/RatingSheet";
+import { AVOIDS, CONTENTS, CONTEXTS, MOODS, PROVIDERS, TASTES, contentKeyOf, type DemoContent } from "./_data/contents";
+import { createRecord } from "./_lib/client";
 
 type Mode = "solo" | "together";
 type Reaction = "pick" | "skip" | "watched";
 
-type DemoContent = {
-  id: number;
-  title: string;
-  eyebrow: string;
-  runtime: number;
-  format: "영화" | "시리즈" | "예능";
-  provider: string;
-  synopsis: string;
-  tags: string[];
-  avoid: string[];
-  contexts: string[];
-  moods: string[];
-  palette: string;
-};
-
-const CONTEXTS = [
-  { value: "식사 중", icon: "🍽️", hint: "불편한 장면 없이 편하게" },
-  { value: "자기 전", icon: "🌙", hint: "부담 없이 한 편만" },
-  { value: "집중해서 보기", icon: "🔎", hint: "놓치지 않고 몰입해서" },
-  { value: "편하게 보기", icon: "🛋️", hint: "대화하며 가볍게" },
-];
-
-const MOODS = ["웃고 싶어요", "긴장감", "따뜻함", "감동", "몰입"];
-const TASTES = ["추리", "코미디", "드라마", "예능", "SF", "로맨스"];
-const AVOIDS = ["잔인함·고어", "공포·깜짝", "선정적인 장면", "불쾌한 소재", "무거운 분위기"];
-const PROVIDERS = ["Netflix", "TVING", "Disney+", "Coupang Play", "상관없음"];
-
-const CONTENTS: DemoContent[] = [
-  {
-    id: 1,
-    title: "한밤의 레시피",
-    eyebrow: "편안한 푸드 예능",
-    runtime: 28,
-    format: "예능",
-    provider: "Netflix",
-    synopsis: "서로 다른 두 사람이 한 끼를 완성하며 나누는 소소하고 유쾌한 이야기.",
-    tags: ["예능", "코미디"],
-    avoid: [],
-    contexts: ["식사 중", "자기 전", "편하게 보기"],
-    moods: ["웃고 싶어요", "따뜻함"],
-    palette: "poster-plum",
-  },
-  {
-    id: 2,
-    title: "사라진 초대장",
-    eyebrow: "가볍게 풀어가는 미스터리",
-    runtime: 52,
-    format: "시리즈",
-    provider: "TVING",
-    synopsis: "오래된 호텔에 모인 여섯 명과 주인 없는 초대장. 대화하며 추리하기 좋은 미스터리.",
-    tags: ["추리", "드라마"],
-    avoid: [],
-    contexts: ["집중해서 보기", "편하게 보기"],
-    moods: ["긴장감", "몰입"],
-    palette: "poster-blue",
-  },
-  {
-    id: 3,
-    title: "우리 동네 우주센터",
-    eyebrow: "따뜻한 생활 SF",
-    runtime: 44,
-    format: "시리즈",
-    provider: "Disney+",
-    synopsis: "폐업 직전의 천문관에서 시작된 작은 신호가 평범한 이웃들의 일상을 바꾼다.",
-    tags: ["SF", "코미디", "드라마"],
-    avoid: [],
-    contexts: ["자기 전", "편하게 보기", "집중해서 보기"],
-    moods: ["따뜻함", "감동", "몰입"],
-    palette: "poster-cyan",
-  },
-  {
-    id: 4,
-    title: "퇴근은 처음이라",
-    eyebrow: "현실 공감 오피스 코미디",
-    runtime: 32,
-    format: "시리즈",
-    provider: "Coupang Play",
-    synopsis: "매일 다른 사건이 벌어지는 작은 회사에서 다섯 동료가 버텨내는 유쾌한 하루.",
-    tags: ["코미디", "드라마"],
-    avoid: [],
-    contexts: ["식사 중", "자기 전", "편하게 보기"],
-    moods: ["웃고 싶어요", "따뜻함"],
-    palette: "poster-coral",
-  },
-  {
-    id: 5,
-    title: "마지막 목격자",
-    eyebrow: "대화가 필요한 정통 추리",
-    runtime: 118,
-    format: "영화",
-    provider: "Netflix",
-    synopsis: "모든 증언이 엇갈리는 밤, 단 하나의 거짓말을 찾기 위한 두 형사의 추적이 시작된다.",
-    tags: ["추리", "드라마"],
-    avoid: ["무거운 분위기"],
-    contexts: ["집중해서 보기"],
-    moods: ["긴장감", "몰입"],
-    palette: "poster-gold",
-  },
-  {
-    id: 6,
-    title: "주말의 작은 여행",
-    eyebrow: "잔잔한 여행 다큐 예능",
-    runtime: 47,
-    format: "예능",
-    provider: "TVING",
-    synopsis: "멀리 가지 않아도 충분한 하루. 도시 주변의 숨은 풍경과 한 끼를 찾아간다.",
-    tags: ["예능", "드라마"],
-    avoid: [],
-    contexts: ["식사 중", "자기 전", "편하게 보기"],
-    moods: ["따뜻함", "감동"],
-    palette: "poster-green",
-  },
-];
 
 function ToggleChip({
   active,
@@ -148,8 +39,15 @@ export default function Home() {
   const [provider, setProvider] = useState("상관없음");
   const [avoids, setAvoids] = useState<string[]>([]);
   const [reactions, setReactions] = useState<Record<number, Reaction>>({});
-  const [selectedTitle, setSelectedTitle] = useState("");
+  const [selectedContent, setSelectedContent] = useState<DemoContent | null>(null);
   const [refreshSeed, setRefreshSeed] = useState(0);
+
+  // 기록과 평가 상태
+  const [sheetTarget, setSheetTarget] = useState<DemoContent | null>(null);
+  const [sheetSubmitting, setSheetSubmitting] = useState(false);
+  const [sheetError, setSheetError] = useState<string | null>(null);
+  const [savedIds, setSavedIds] = useState<number[]>([]);
+  const [toast, setToast] = useState<string | null>(null);
 
   const toggleList = (value: string, list: string[], setter: (next: string[]) => void) => {
     setter(list.includes(value) ? list.filter((item) => item !== value) : [...list, value]);
@@ -197,8 +95,52 @@ export default function Home() {
     setProvider("상관없음");
     setAvoids([]);
     setReactions({});
-    setSelectedTitle("");
+    setSelectedContent(null);
     setRefreshSeed(0);
+    setSheetTarget(null);
+    setSheetError(null);
+    setSavedIds([]);
+    setToast(null);
+  };
+
+  const openSheet = (content: DemoContent) => {
+    setSheetError(null);
+    setSheetTarget(content);
+  };
+
+  /** 추천 맥락을 함께 저장해 두면 나중에 어떤 상황의 선택이 좋았는지 볼 수 있다. PRD 7.1. */
+  const submitRecord = async (values: RatingSheetValues) => {
+    if (!sheetTarget) return;
+
+    setSheetSubmitting(true);
+    setSheetError(null);
+
+    try {
+      await createRecord(
+        {
+          contentKey: contentKeyOf(sheetTarget),
+          contentTitle: sheetTarget.title,
+          contentFormat: sheetTarget.format,
+          contentProvider: sheetTarget.provider,
+          contentRuntime: sheetTarget.runtime,
+          posterPalette: sheetTarget.palette,
+        },
+        { watchMode: mode, pickedContext: context || null, pickedMood: mood || null },
+        values
+      );
+
+      setSavedIds((current) => (current.includes(sheetTarget.id) ? current : [...current, sheetTarget.id]));
+      setToast(
+        values.rating === null
+          ? `“${sheetTarget.title}” 기록을 저장했어요. 별점은 나중에 남길 수 있어요.`
+          : `“${sheetTarget.title}” 기록과 ${values.rating}점 평가를 저장했어요.`
+      );
+      setSheetTarget(null);
+    } catch (error) {
+      setSheetError(error instanceof Error ? error.message : "저장에 실패했습니다.");
+    } finally {
+      setSheetSubmitting(false);
+    }
   };
 
   const selectMode = (nextMode: Mode) => {
@@ -224,6 +166,9 @@ export default function Home() {
         </button>
         <div className="header-meta">
           {step > 0 && step < 4 && <span className="step-label">{step} / 3</span>}
+          <Link className="reset-button" href="/records">
+            함께 본 목록
+          </Link>
           {step > 0 && (
             <button type="button" className="reset-button" onClick={reset}>
               처음부터
@@ -405,10 +350,29 @@ export default function Home() {
               <button type="button" className="edit-button" onClick={() => setStep(3)}>조건 수정</button>
             </div>
 
-            {selectedTitle && (
+            {toast && (
+              <div className="save-toast" role="status">
+                <span aria-hidden="true">✓</span>
+                <p>{toast}</p>
+                <Link href="/records">기록 보러 가기</Link>
+                <button type="button" onClick={() => setToast(null)} aria-label="알림 닫기">✕</button>
+              </div>
+            )}
+
+            {selectedContent && (
               <div className="selection-banner" role="status">
                 <span aria-hidden="true">✓</span>
-                <div><strong>“{selectedTitle}”로 결정했어요!</strong><p>오늘의 선택이 즐거운 시간이 되길 바라요.</p></div>
+                <div>
+                  <strong>“{selectedContent.title}”로 결정했어요!</strong>
+                  <p>
+                    {savedIds.includes(selectedContent.id)
+                      ? "기록을 남겼어요. 다 보고 나서 평가를 수정할 수도 있어요."
+                      : "다 보고 나면 별점과 한 줄 감상을 남겨 보세요."}
+                  </p>
+                </div>
+                <button type="button" className="banner-record" onClick={() => openSheet(selectedContent)}>
+                  다 봤어요, 기록하기
+                </button>
                 <button type="button" onClick={reset}>새로 고르기</button>
               </div>
             )}
@@ -446,7 +410,7 @@ export default function Home() {
                       <button
                         type="button"
                         className="pick-button"
-                        onClick={() => { setReactions((current) => ({ ...current, [item.id]: "pick" })); setSelectedTitle(item.title); }}
+                        onClick={() => { setReactions((current) => ({ ...current, [item.id]: "pick" })); setSelectedContent(item); }}
                       >
                         {reaction === "pick" ? "선택 완료 ✓" : "이걸 볼게요"}
                       </button>
@@ -454,6 +418,12 @@ export default function Home() {
                         <button type="button" className={reaction === "skip" ? "active" : ""} onClick={() => setReactions((current) => ({ ...current, [item.id]: "skip" }))}>별로예요</button>
                         <button type="button" className={reaction === "watched" ? "active" : ""} onClick={() => setReactions((current) => ({ ...current, [item.id]: "watched" }))}>이미 봤어요</button>
                       </div>
+                      {/* 이미 본 콘텐츠도 그 자리에서 평가를 남길 수 있다. PRD 7.1 진입점. */}
+                      {reaction === "watched" && (
+                        <button type="button" className="record-link-button" onClick={() => openSheet(item)}>
+                          {savedIds.includes(item.id) ? "기록 완료 · 하나 더 남기기" : "평가 남기기"}
+                        </button>
+                      )}
                     </div>
                   </article>
                 );
@@ -462,7 +432,7 @@ export default function Home() {
 
             {recommendations.length > 0 && <div className="result-footer">
               <p>마음에 드는 게 없나요? 거절한 콘텐츠를 제외하고 다시 찾아볼게요.</p>
-              <button type="button" onClick={() => { setReactions({}); setSelectedTitle(""); setRefreshSeed((value) => value + 3); }}>↻ 다른 3개 보기</button>
+              <button type="button" onClick={() => { setReactions({}); setSelectedContent(null); setRefreshSeed((value) => value + 3); }}>↻ 다른 3개 보기</button>
             </div>}
             <p className="demo-notice">현재 화면은 추천 경험 검증을 위한 데모입니다. 정식 서비스에서는 TMDB 기반 콘텐츠와 실시간 시청처 정보를 제공합니다.</p>
           </section>
@@ -473,6 +443,25 @@ export default function Home() {
         <span>같이볼래 · 오늘 우리에게 맞는 선택</span>
         <span>This product uses the TMDB API but is not endorsed or certified by TMDB.</span>
       </footer>
+
+      {sheetTarget && (
+        <RatingSheet
+          title={sheetTarget.title}
+          format={sheetTarget.format}
+          notice={
+            savedIds.includes(sheetTarget.id)
+              ? "이미 기록한 콘텐츠예요. 저장하면 재시청 기록으로 추가됩니다."
+              : null
+          }
+          submitting={sheetSubmitting}
+          error={sheetError}
+          onSubmit={submitRecord}
+          onClose={() => {
+            setSheetTarget(null);
+            setSheetError(null);
+          }}
+        />
+      )}
     </main>
   );
 }
