@@ -47,10 +47,14 @@ async function waitForReady(server, baseUrl, readOutput) {
 /**
  * Boots the production server and resolves once it answers requests.
  *
+ * `env` overrides individual variables for the child. Next.js only fills in
+ * variables that are not already set, so passing an empty string here also
+ * shadows a value coming from `.env.local`.
+ *
  * Returns `stop()` rather than killing on process exit so a failing test still
  * reports its assertion instead of a stray "server left running" error.
  */
-export async function startServer() {
+export async function startServer({ env = {} } = {}) {
   const port = Number(process.env.TEST_PORT ?? (await findFreePort()));
   const baseUrl = `http://127.0.0.1:${port}`;
 
@@ -58,7 +62,7 @@ export async function startServer() {
   const server = spawn(
     process.execPath,
     [nextBin, "start", "--hostname", "127.0.0.1", "--port", String(port)],
-    { cwd: projectRoot, stdio: ["ignore", "pipe", "pipe"] }
+    { cwd: projectRoot, env: { ...process.env, ...env }, stdio: ["ignore", "pipe", "pipe"] }
   );
   server.stdout.on("data", (chunk) => chunks.push(chunk));
   server.stderr.on("data", (chunk) => chunks.push(chunk));

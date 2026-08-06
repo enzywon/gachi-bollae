@@ -12,7 +12,9 @@ import { startServer } from "./helpers/server.mjs";
 let server;
 
 before(async () => {
-  server = await startServer();
+  // 저장소에 닿기 전 경로만 검증하는 스위트다. 개발 환경이나 CI에 DATABASE_URL이 있으면
+  // 유효한 POST가 실제 DB에 행을 쓰므로 자식 프로세스에서 명시적으로 비운다.
+  server = await startServer({ env: { DATABASE_URL: "" } });
 });
 
 after(async () => {

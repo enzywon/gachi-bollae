@@ -6,7 +6,7 @@
  * 변환은 아래 DTO 경계에서만 일어난다.
  */
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "../../db";
 import { reviews, watchRecords, type ReviewRow, type WatchRecordRow } from "../../db/schema";
 import { baseDateOf } from "./date";
@@ -269,17 +269,18 @@ export async function upsertReview(
 
   if (owned.length === 0) return null;
 
-  const existing = await db
-    .select()
-    .from(reviews)
-    .where(and(eq(reviews.watchRecordId, recordId), eq(reviews.raterKey, RATER_KEY)))
-    .limit(1);
-
   const timestamp = new Date();
-  const current = existing[0];
 
-  if (!current) {
-    await db.insert(reviews).values({
+  // 먼저 조회해서 insert와 update로 갈라지면, 같은 기록에 동시에 저장이 들어올 때
+  // 양쪽 모두 "평가 없음"을 읽고 나란히 insert를 시도해 한쪽이 유니크 제약에 걸린다.
+  // 단일 upsert로 합쳐 원자적으로 처리한다.
+  //
+  // `setWhere`가 값이 실제로 바뀐 저장에만 UPDATE를 태우므로,
+  // 같은 값으로 다시 저장하면 수정 횟수도 `updatedAt`도 그대로다. PRD 7.3.
+  // `submittedAt`은 최초 제출 시각이라 갱신 대상에서 뺀다.
+  await db
+    .insert(reviews)
+    .values({
       watchRecordId: recordId,
       raterKey: RATER_KEY,
       rating: input.rating,
@@ -288,27 +289,20 @@ export async function upsertReview(
       editCount: 0,
       createdAt: timestamp,
       updatedAt: timestamp,
-    });
-    return findRecord(ownerKey, recordId);
-  }
-
-  const unchanged =
-    current.rating === input.rating && (current.shortComment ?? null) === input.shortComment;
-
-  if (unchanged) {
-    return findRecord(ownerKey, recordId);
-  }
-
-  await db
-    .update(reviews)
-    .set({
-      rating: input.rating,
-      shortComment: input.shortComment,
-      editCount: current.editCount + 1,
-      editedAt: timestamp,
-      updatedAt: timestamp,
     })
-    .where(eq(reviews.id, current.id));
+    .onConflictDoUpdate({
+      target: [reviews.watchRecordId, reviews.raterKey],
+      set: {
+        rating: input.rating,
+        shortComment: input.shortComment,
+        editCount: sql`${reviews.editCount} + 1`,
+        editedAt: timestamp,
+        updatedAt: timestamp,
+      },
+      // `IS DISTINCT FROM`은 한쪽이 NULL이어도 기대대로 비교한다. 감상은 비워둘 수 있다.
+      setWhere: sql`${reviews.rating} IS DISTINCT FROM ${input.rating}
+        OR ${reviews.shortComment} IS DISTINCT FROM ${input.shortComment}`,
+    });
 
   return findRecord(ownerKey, recordId);
 }

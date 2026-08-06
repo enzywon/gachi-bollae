@@ -51,7 +51,7 @@ npm run dev
 ```bash
 npm run dev                # 개발 서버 실행
 npm run lint               # 코드 검사
-npm test                   # 빌드 및 렌더링 테스트
+npm test                   # 빌드, 렌더링, 기록 API 테스트
 npm run build              # 배포용 빌드
 npm start                  # 빌드 결과 실행
 npm run git:setup          # 커밋 템플릿과 검증 훅 설정
