@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 기여 가이드
+    url: https://github.com/enzywon/gachi-bollae/blob/main/CONTRIBUTING.md
+    about: 브랜치·커밋·PR 규칙을 먼저 확인해 주세요.
+  - name: 코드 리뷰 가이드
+    url: https://github.com/enzywon/gachi-bollae/blob/main/docs/CODE_REVIEW.md
+    about: 리뷰 진행 방식과 기준을 정리해 두었습니다.
