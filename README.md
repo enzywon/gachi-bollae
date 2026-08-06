@@ -17,16 +17,16 @@
 - 함께 본 목록의 작품 단위 묶음, 재시청 배지, 정렬과 필터
 
 현재 추천 데이터는 화면 흐름을 확인하기 위한 데모 데이터입니다.
-시청 기록과 평가는 Cloudflare D1에 저장합니다. 상세 요구사항은 [평가 기능 PRD](./docs/gachi-bollae-rating-prd-v0.1.md)를 참고하세요.
+시청 기록과 평가는 Postgres에 저장합니다. 상세 요구사항은 [평가 기능 PRD](./docs/gachi-bollae-rating-prd-v0.1.md)를 참고하세요.
 
 ## 기술 구성
 
 - React 19
-- Next.js 16
+- Next.js 16 (App Router)
 - TypeScript
-- Vite와 Vinext
-- Cloudflare Workers
-- Drizzle ORM과 선택적 D1 연동
+- Tailwind CSS 4
+- Postgres (Neon) + Drizzle ORM
+- Vercel 배포
 
 ## 시작하기
 
@@ -53,8 +53,7 @@ npm run dev                # 개발 서버 실행
 npm run lint               # 코드 검사
 npm test                   # 빌드 및 렌더링 테스트
 npm run build              # 배포용 빌드
-npm run validate:artifact  # 생성된 배포 결과 검증
-npm run db:generate        # Drizzle 마이그레이션 생성
+npm start                  # 빌드 결과 실행
 npm run git:setup          # 커밋 템플릿과 검증 훅 설정
 npm run pr:start -- <type> <slug> # 작업 브랜치 생성
 npm run pr:open            # 현재 브랜치로 draft PR 생성
@@ -62,49 +61,44 @@ npm run pr:checks          # PR의 CI 결과 확인
 npm run pr:ready           # draft PR을 리뷰 가능한 상태로 전환
 ```
 
-### 로컬 D1 준비
+### 데이터베이스 준비
 
-기록과 평가 기능은 D1 테이블이 있어야 동작합니다. 로컬 개발 환경에서는 마이그레이션을 직접 한 번 적용합니다.
-아래 설정 파일을 임시로 만든 뒤 `drizzle/` 아래의 SQL을 실행하세요. 배포 환경에서는 플랫폼이 마이그레이션을 적용합니다.
+추천 흐름은 데이터베이스 없이도 동작하지만, 기록과 평가 기능을 쓰려면 Postgres 연결이 필요합니다.
+
+[Neon](https://neon.tech)에서 무료 프로젝트를 만들고 접속 문자열을 `.env.local`에 넣습니다. 이 파일은 `.gitignore`에 있으므로 커밋되지 않습니다.
 
 ```bash
-cat > wrangler.local.json <<'JSON'
-{
-  "name": "gachi-bollae-local",
-  "main": "worker/index.ts",
-  "compatibility_date": "2025-01-01",
-  "compatibility_flags": ["nodejs_compat"],
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "site-creator-d1",
-      "database_id": "00000000-0000-4000-8000-000000000000"
-    }
-  ]
-}
-JSON
-
-npx wrangler d1 execute DB --local \
-  --config wrangler.local.json \
-  --persist-to .wrangler/state \
-  --file drizzle/0000_absent_flatman.sql
+echo 'DATABASE_URL=postgresql://<user>:<password>@<host>/<database>?sslmode=require' > .env.local
 ```
 
-테이블이 없으면 API가 `기록 테이블이 아직 만들어지지 않았습니다` 안내와 함께 503으로 응답합니다.
+이어서 마이그레이션을 적용합니다.
 
-빌드와 CI 보조 스크립트는 Linux 환경을 기준으로 하며 `flock`, `curl`, GNU `timeout`을 사용합니다. macOS에서는 개발 서버와 lint를 우선 사용하고, 전체 빌드는 Linux CI 환경에서 확인하는 것을 권장합니다.
+```bash
+npm run db:migrate
+```
+
+스키마를 바꾼 뒤에는 `npm run db:generate`로 마이그레이션 파일을 새로 만든 다음 다시 적용하세요.
+
+`DATABASE_URL`이 없으면 기록 API가 `저장소가 연결되지 않았습니다` 안내와 함께 503으로 응답하고, 테이블이 없으면 `기록 테이블이 아직 만들어지지 않았습니다` 안내와 함께 503으로 응답합니다.
+
 
 ## 프로젝트 구조
 
 ```text
-app/        화면, 스타일, 인증 도우미
-db/         Drizzle 스키마와 D1 연결
-worker/     Cloudflare Worker 진입점
-examples/   선택 기능 예시
-scripts/    설치, 빌드, 검증 스크립트
-tests/      렌더링 결과 테스트
+app/        화면과 스타일, 기록 API
+db/         Drizzle 스키마와 데이터베이스 연결
+drizzle/    마이그레이션 파일
+docs/       PRD와 개발 가이드
+scripts/    Git 훅과 PR 보조 스크립트
+tests/      렌더링 결과와 기록 API 테스트
 public/     정적 파일
 ```
+
+## 배포
+
+Vercel에 배포합니다. GitHub 저장소를 Vercel 프로젝트에 연결하면 별도 설정 없이 Next.js로 인식되며, `main` 병합은 프로덕션에, PR은 프리뷰 URL에 각각 자동 배포됩니다.
+
+기록과 평가 기능을 쓰려면 Vercel 프로젝트 설정에 `DATABASE_URL`을 등록해야 합니다. Vercel Marketplace에서 Neon을 연결하면 이 값이 자동으로 주입됩니다. 접속 문자열은 저장소에 커밋하지 않습니다.
 
 ## 커밋 규칙
 
@@ -126,7 +120,7 @@ npm run git:setup
 
 모든 변경은 작업 브랜치와 PR을 통해 `main`에 병합합니다. PR에서는 제목 형식, lint, 테스트를 GitHub Actions로 자동 검사하며 리뷰 방식은 [코드 리뷰 가이드](./docs/CODE_REVIEW.md)를 따릅니다.
 
-팀에서 사용하는 React, Cloudflare, Playwright, 보안 및 프로젝트 전용 리뷰 skills는 `.agents/skills/`에 함께 버전 관리합니다. 설치 출처와 고정 버전은 [Agent skills 문서](./docs/AGENT_SKILLS.md)에서 확인할 수 있습니다. 저장소를 처음 받거나 skill이 변경된 뒤에는 Codex를 다시 시작해 주세요.
+팀에서 사용하는 React, Playwright, 보안 및 프로젝트 전용 리뷰 skills는 `.agents/skills/`에 함께 버전 관리합니다. 설치 출처와 고정 버전은 [Agent skills 문서](./docs/AGENT_SKILLS.md)에서 확인할 수 있습니다. 저장소를 처음 받거나 skill이 변경된 뒤에는 Codex를 다시 시작해 주세요.
 
 ## 현재 상태
 

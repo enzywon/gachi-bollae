@@ -1,33 +1,26 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { after, before } from "node:test";
+import { startServer } from "./helpers/server.mjs";
 
 /**
- * 빌드된 Worker에 직접 요청을 보내 서버 검증 규칙을 확인한다. PRD 10.2.
+ * 실행 중인 서버에 요청을 보내 서버 검증 규칙을 확인한다. PRD 10.2.
  *
- * D1 바인딩 없이 실행되므로 저장소에 닿기 전에 끝나는 경로만 다룬다.
+ * DATABASE_URL 없이 실행되므로 저장소에 닿기 전에 끝나는 경로만 다룬다.
  * 검증은 모두 DB 호출 이전에 수행되기 때문에 이 범위로도 규칙을 확인할 수 있다.
  */
 
-const ENV = {
-  ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) },
-};
+let server;
 
-const CTX = { waitUntil() {}, passThroughOnException() {} };
+before(async () => {
+  server = await startServer();
+});
 
-let workerPromise;
+after(async () => {
+  await server?.stop();
+});
 
-function loadWorker() {
-  if (!workerPromise) {
-    const workerUrl = new URL("../dist/server/index.js", import.meta.url);
-    workerUrl.searchParams.set("test", `records-${process.pid}`);
-    workerPromise = import(workerUrl.href).then((module) => module.default);
-  }
-  return workerPromise;
-}
-
-async function call(path, init = {}) {
-  const worker = await loadWorker();
-  return worker.fetch(new Request(`http://localhost${path}`, init), ENV, CTX);
+function call(path, init = {}) {
+  return fetch(`${server.baseUrl}${path}`, init);
 }
 
 function post(body, { cookie } = {}) {
@@ -140,13 +133,7 @@ test("영화 기록에 시즌 번호가 오면 거부한다", async () => {
 
 test("시리즈는 시즌 번호를 받아들인다", async () => {
   // 검증을 통과하면 저장 단계로 넘어가므로 400이 아니어야 한다.
-  const response = await post({
-    ...VALID,
-    contentKey: "demo:2",
-    contentTitle: "사라진 초대장",
-    contentFormat: "시리즈",
-    seasonNumber: 1,
-  });
+  const response = await post({ ...SERIES, seasonNumber: 1 });
 
   assert.notEqual(response.status, 400);
 });
@@ -202,6 +189,14 @@ test("평가 저장에는 별점이 필수다", async () => {
 
   assert.equal(response.status, 400);
   assert.match((await response.json()).error, /별점/);
+});
+
+/** 저장소가 없으면 500으로 뭉뚱그리지 않고 안내 가능한 503으로 답한다. PRD 11.1. */
+test("DATABASE_URL이 없으면 503으로 안내한다", async () => {
+  const response = await post(VALID, { cookie: "gb_owner=test-owner" });
+
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).code, "storage_unavailable");
 });
 
 test("함께 본 목록 화면이 렌더링된다", async () => {

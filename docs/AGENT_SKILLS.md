@@ -6,8 +6,6 @@
 
 | 공급자 | Skill | 고정 커밋 | 용도 |
 | --- | --- | --- | --- |
-| Cloudflare | `workers-best-practices` | `30553f89ae1ef1e3c2917cd09d72dac992bb4e9a` | Workers 구현과 리뷰 |
-| Cloudflare | `wrangler` | `30553f89ae1ef1e3c2917cd09d72dac992bb4e9a` | Wrangler 설정과 CLI |
 | Vercel Labs | `react-best-practices` | `7c180d9044c9ae2b442b567aad4e42a28dd5ed62` | React 성능 |
 | Vercel Labs | `composition-patterns` | `7c180d9044c9ae2b442b567aad4e42a28dd5ed62` | 컴포넌트 설계 |
 | Vercel Labs | `web-design-guidelines` | `7c180d9044c9ae2b442b567aad4e42a28dd5ed62` | 접근성과 UI 품질 |
@@ -16,7 +14,6 @@
 
 출처:
 
-- <https://github.com/cloudflare/skills> — Apache-2.0
 - <https://github.com/vercel-labs/agent-skills> — MIT
 - <https://github.com/openai/skills> — 각 skill 폴더의 `LICENSE.txt`와 `NOTICE.txt` 적용
 
@@ -25,7 +22,7 @@ Playwright skill의 wrapper는 실제 브라우저 작업을 요청했을 때 `n
 ## 프로젝트 전용 리뷰 skills
 
 - `pr-reviewer`: correctness와 회귀 중심 PR 리뷰
-- `security-reviewer`: 인증, 데이터, 비밀값, Workers 보안 리뷰
+- `security-reviewer`: 인증, 데이터, 비밀값, 서버 렌더링 보안 리뷰
 - `test-reviewer`: 실패 경로와 회귀 테스트 설계
 
 리뷰 skill은 기본적으로 코멘트만 작성합니다. 코드 수정, push, 승인, 병합은 별도 요청이 있을 때만 수행합니다.

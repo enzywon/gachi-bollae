@@ -1,5 +1,6 @@
 /** Route Handler 공통 응답 처리. PRD 11.1 참고. */
 
+import { MISSING_DATABASE_URL } from "../../db";
 import { ownerCookieHeader } from "./owner";
 import { ValidationError } from "./validation";
 
@@ -38,22 +39,23 @@ export function errorResponse(error: unknown): Response {
   const detail = error instanceof Error && error.cause instanceof Error ? error.cause.message : "";
   const combined = `${message}\n${detail}`;
 
-  if (combined.includes("D1 binding")) {
+  if (combined.includes(MISSING_DATABASE_URL)) {
     return Response.json(
       {
         error:
-          "저장소가 연결되지 않아 기록을 남길 수 없습니다. .openai/hosting.json의 d1 값을 확인해 주세요.",
+          "저장소가 연결되지 않아 기록을 남길 수 없습니다. DATABASE_URL 환경 변수를 확인해 주세요.",
         code: "storage_unavailable",
       },
       { status: 503 }
     );
   }
 
-  if (combined.includes("no such table")) {
+  // Postgres 42P01 undefined_table. 마이그레이션을 아직 적용하지 않은 상태다.
+  if (combined.includes("does not exist") || combined.includes("42P01")) {
     return Response.json(
       {
         error:
-          "기록 테이블이 아직 만들어지지 않았습니다. `npm run db:generate`로 마이그레이션을 만든 뒤 배포해 주세요.",
+          "기록 테이블이 아직 만들어지지 않았습니다. `npm run db:migrate`로 마이그레이션을 적용해 주세요.",
         code: "migration_required",
       },
       { status: 503 }

@@ -1,6 +1,6 @@
 ---
 name: test-reviewer
-description: Review changed behavior and test coverage, identify missing regression cases, and design focused unit, integration, or browser tests. Use when reviewing a PR, planning validation, diagnosing CI coverage gaps, or adding tests for React, Worker, and user-facing flows.
+description: Review changed behavior and test coverage, identify missing regression cases, and design focused unit, integration, or browser tests. Use when reviewing a PR, planning validation, diagnosing CI coverage gaps, or adding tests for React, server-rendered, and user-facing flows.
 ---
 
 # Test Reviewer
@@ -18,7 +18,7 @@ Map the changed behavior to the smallest reliable set of tests.
 ## Test selection
 
 - Use unit tests for pure scoring, filtering, and transformation logic.
-- Use integration tests for Worker handlers, bindings, and data access.
+- Use integration tests for route handlers, server rendering, and data access.
 - Use `$playwright` for critical browser flows, accessibility behavior, and cross-component interactions.
 - Avoid testing implementation details, arbitrary timing, or unstable selectors.
 - Keep fixtures isolated and tests deterministic and parallel-safe.

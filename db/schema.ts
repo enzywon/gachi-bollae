@@ -1,5 +1,14 @@
 import { sql } from "drizzle-orm";
-import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import {
+  date,
+  index,
+  integer,
+  pgTable,
+  serial,
+  text,
+  timestamp,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
 
 /**
  * 시청 기록. PRD 9.1 참고.
@@ -7,10 +16,10 @@ import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqli
  * 콘텐츠 정보는 참조만 저장하지 않고 기록 시점의 값을 함께 남긴다.
  * 데모 콘텐츠 배열이 바뀌거나 외부 API로 교체되어도 과거 기록이 깨지지 않게 하기 위해서다.
  */
-export const watchRecords = sqliteTable(
+export const watchRecords = pgTable(
   "watch_records",
   {
-    id: integer("id").primaryKey({ autoIncrement: true }),
+    id: serial("id").primaryKey(),
 
     // 쿠키로 발급한 익명 소유자 키. 2인 평가 도입 시 그룹 식별자로 승격한다.
     ownerKey: text("owner_key").notNull(),
@@ -31,13 +40,21 @@ export const watchRecords = sqliteTable(
     pickedMood: text("picked_mood"),
 
     watchStatus: text("watch_status").notNull(), // watching | completed | dropped
-    startedOn: text("started_on"), // KST YYYY-MM-DD
-    finishedOn: text("finished_on"), // KST YYYY-MM-DD
+
+    // 사용자가 고른 KST 달력 날짜다. 시각이 아니므로 date로 두어
+    // 타임존 변환이 끼어들 여지를 없앤다. 드라이버와는 YYYY-MM-DD 문자열로 주고받는다.
+    startedOn: date("started_on"),
+    finishedOn: date("finished_on"),
+
     seasonNumber: integer("season_number"), // 영화는 null
     memo: text("memo"),
 
-    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-    updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
   },
   (table) => [
     // 재시청을 허용하므로 콘텐츠 단위 유니크 제약은 두지 않는다.
@@ -52,10 +69,10 @@ export const watchRecords = sqliteTable(
  * 평가자가 1인이라 watch_records와 합칠 수 있지만,
  * 합치면 2인 블라인드 도입 시 테이블을 쪼개는 마이그레이션이 필요해진다.
  */
-export const reviews = sqliteTable(
+export const reviews = pgTable(
   "reviews",
   {
-    id: integer("id").primaryKey({ autoIncrement: true }),
+    id: serial("id").primaryKey(),
 
     watchRecordId: integer("watch_record_id")
       .notNull()
@@ -67,12 +84,18 @@ export const reviews = sqliteTable(
     rating: integer("rating").notNull(), // 1~5 정수
     shortComment: text("short_comment"), // 최대 200자
 
-    submittedAt: text("submitted_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    submittedAt: timestamp("submitted_at", { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
     editCount: integer("edit_count").notNull().default(0),
-    editedAt: text("edited_at"),
+    editedAt: timestamp("edited_at", { withTimezone: true }),
 
-    createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
-    updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .default(sql`now()`),
   },
   (table) => [uniqueIndex("reviews_record_rater_uniq").on(table.watchRecordId, table.raterKey)]
 );

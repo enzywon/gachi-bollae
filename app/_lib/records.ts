@@ -1,6 +1,9 @@
 /**
  * 기록과 평가의 데이터 접근 계층. 서버에서만 import한다.
- * (`db/index.ts`가 `cloudflare:workers`를 참조하므로 클라이언트 번들에 들어가면 안 된다.)
+ * (`db/index.ts`가 `DATABASE_URL`과 드라이버를 참조하므로 클라이언트 번들에 들어가면 안 된다.)
+ *
+ * DB는 시각을 timestamptz로 다루지만 API 응답은 ISO 문자열로 고정한다.
+ * 변환은 아래 DTO 경계에서만 일어난다.
  */
 
 import { and, eq } from "drizzle-orm";
@@ -13,8 +16,12 @@ import type { ValidatedRecord, ValidatedRecordPatch, ValidatedReview } from "./v
 /** 2인 평가를 도입하기 전까지 평가자는 하나다. PRD 9.2. */
 const RATER_KEY = "me";
 
-function nowIso(): string {
-  return new Date().toISOString();
+function toIso(value: Date): string {
+  return value.toISOString();
+}
+
+function toIsoOrNull(value: Date | null): string | null {
+  return value === null ? null : value.toISOString();
 }
 
 function toReviewDto(row: ReviewRow | null) {
@@ -24,8 +31,8 @@ function toReviewDto(row: ReviewRow | null) {
     rating: row.rating,
     shortComment: row.shortComment,
     editCount: row.editCount,
-    editedAt: row.editedAt,
-    submittedAt: row.submittedAt,
+    editedAt: toIsoOrNull(row.editedAt),
+    submittedAt: toIso(row.submittedAt),
   };
 }
 
@@ -46,8 +53,8 @@ function toRecordDto(record: WatchRecordRow, review: ReviewRow | null): RecordDt
     finishedOn: record.finishedOn,
     seasonNumber: record.seasonNumber,
     memo: record.memo,
-    createdAt: record.createdAt,
-    updatedAt: record.updatedAt,
+    createdAt: toIso(record.createdAt),
+    updatedAt: toIso(record.updatedAt),
     review: toReviewDto(review),
   };
 }
@@ -108,7 +115,7 @@ export type ListOptions = {
 };
 
 export async function listRecords(ownerKey: string, options: ListOptions): Promise<RecordListResponse> {
-  const db = await getDb();
+  const db = getDb();
 
   const rows = await db
     .select({ record: watchRecords, review: reviews })
@@ -143,7 +150,7 @@ export async function listRecords(ownerKey: string, options: ListOptions): Promi
 }
 
 export async function findRecord(ownerKey: string, id: number): Promise<RecordDto | null> {
-  const db = await getDb();
+  const db = getDb();
 
   const rows = await db
     .select({ record: watchRecords, review: reviews })
@@ -157,8 +164,8 @@ export async function findRecord(ownerKey: string, id: number): Promise<RecordDt
 }
 
 export async function createRecord(ownerKey: string, input: ValidatedRecord): Promise<RecordDto> {
-  const db = await getDb();
-  const timestamp = nowIso();
+  const db = getDb();
+  const timestamp = new Date();
 
   const [record] = await db
     .insert(watchRecords)
@@ -211,7 +218,7 @@ export async function updateRecord(
   id: number,
   patch: ValidatedRecordPatch
 ): Promise<RecordDto | null> {
-  const db = await getDb();
+  const db = getDb();
 
   const updated = await db
     .update(watchRecords)
@@ -221,7 +228,7 @@ export async function updateRecord(
       finishedOn: patch.finishedOn,
       seasonNumber: patch.seasonNumber,
       memo: patch.memo,
-      updatedAt: nowIso(),
+      updatedAt: new Date(),
     })
     .where(and(eq(watchRecords.id, id), eq(watchRecords.ownerKey, ownerKey)))
     .returning();
@@ -231,22 +238,16 @@ export async function updateRecord(
 }
 
 export async function deleteRecord(ownerKey: string, id: number): Promise<boolean> {
-  const db = await getDb();
+  const db = getDb();
 
-  // ON DELETE CASCADE에만 의존하지 않는다. D1의 외래 키 강제 여부와 무관하게
-  // 평가가 남지 않도록 명시적으로 먼저 지운다. PRD 11.4.
-  const owned = await db
-    .select({ id: watchRecords.id })
-    .from(watchRecords)
+  // 소유자 조건을 걸어 남의 기록이 지워지지 않게 한다. 삭제된 행이 없으면 없는 기록이다.
+  // 평가는 외래 키의 ON DELETE CASCADE로 함께 지워진다. PRD 11.4.
+  const deleted = await db
+    .delete(watchRecords)
     .where(and(eq(watchRecords.id, id), eq(watchRecords.ownerKey, ownerKey)))
-    .limit(1);
+    .returning({ id: watchRecords.id });
 
-  if (owned.length === 0) return false;
-
-  await db.delete(reviews).where(eq(reviews.watchRecordId, id));
-  await db.delete(watchRecords).where(and(eq(watchRecords.id, id), eq(watchRecords.ownerKey, ownerKey)));
-
-  return true;
+  return deleted.length > 0;
 }
 
 /**
@@ -258,7 +259,7 @@ export async function upsertReview(
   recordId: number,
   input: ValidatedReview
 ): Promise<RecordDto | null> {
-  const db = await getDb();
+  const db = getDb();
 
   const owned = await db
     .select({ id: watchRecords.id })
@@ -274,7 +275,7 @@ export async function upsertReview(
     .where(and(eq(reviews.watchRecordId, recordId), eq(reviews.raterKey, RATER_KEY)))
     .limit(1);
 
-  const timestamp = nowIso();
+  const timestamp = new Date();
   const current = existing[0];
 
   if (!current) {

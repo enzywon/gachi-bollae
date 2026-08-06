@@ -1,24 +1,33 @@
-import { drizzle } from "drizzle-orm/d1";
+import { neon } from "@neondatabase/serverless";
+import { drizzle } from "drizzle-orm/neon-http";
 import * as schema from "./schema";
 
-/**
- * `cloudflare:workers`를 지연 로딩한다.
- * 최상위에서 import하면 빌드 산출물을 일반 Node로 불러오는 검증 단계
- * (`scripts/validate-artifact.sh`)에서 모듈을 해석하지 못한다.
- */
-async function workerEnv(): Promise<{ DB?: D1Database }> {
-  const workers = await import("cloudflare:workers");
-  return workers.env as { DB?: D1Database };
+export const MISSING_DATABASE_URL = "DATABASE_URL is not set";
+
+type Db = ReturnType<typeof createDb>;
+
+function createDb(url: string) {
+  return drizzle(neon(url), { schema });
 }
 
-export async function getDb() {
-  const env = await workerEnv();
+let cached: Db | null = null;
 
-  if (!env.DB) {
-    throw new Error(
-      "Cloudflare D1 binding `DB` is unavailable. Set the `d1` field in .openai/hosting.json to `DB` or let your control plane inject the real binding values before using the database."
-    );
+/**
+ * 요청마다 새로 붙지 않도록 연결을 모듈 수준에서 재사용한다.
+ *
+ * 연결은 최초 호출 시점에 만든다. import 시점에 만들면 `DATABASE_URL` 없이도
+ * 동작해야 하는 추천 흐름과 렌더링 테스트까지 함께 죽는다.
+ */
+export function getDb(): Db {
+  const url = process.env.DATABASE_URL;
+
+  if (!url) {
+    throw new Error(MISSING_DATABASE_URL);
   }
 
-  return drizzle(env.DB, { schema });
+  if (!cached) {
+    cached = createDb(url);
+  }
+
+  return cached;
 }
