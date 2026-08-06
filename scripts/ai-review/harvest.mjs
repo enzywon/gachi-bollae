@@ -111,7 +111,9 @@ const SOURCES = {
   coderabbit: {
     bot: 'coderabbitai[bot]',
     parse: parseCodeRabbit,
-    blocked: /Review skipped/i,
+    // 할당량이 차면 리뷰를 아예 시작하지 않는다. 이걸 못 알아보면 오지 않을 리뷰를
+    // 타임아웃까지 기다리게 된다.
+    blocked: /Review skipped|Review limit reached|Review rate limited|rate limited by coderabbit/i,
     noise: /auto-generated reply by CodeRabbit/i,
   },
 };
@@ -185,25 +187,36 @@ function fetchTriggerTime(repo, commentId) {
   }
 }
 
-// 앱이 리뷰 대신 "리뷰할 수 없다"는 안내문을 남기는 경우가 있다(계정 연결 필요 등).
+// 안내문 본문에서 사람이 읽을 한 줄을 뽑는다. 통합 코멘트에 사유로 싣는 값이라
+// 마크업(주석, 태그, 인용, 알림 블록)은 걷어낸다.
+function summarizeReply(body) {
+  const text = (body ?? '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<\/?[a-z][^>]*>/gi, '')
+    .replace(/^\s*>\s?/gm, '')
+    .replace(/\[!\w+\]/g, '')
+    .replace(/^\s*#+\s*/gm, '');
+  const line = text.split('\n').map((l) => l.trim()).find(Boolean) ?? '';
+  return line.slice(0, 160);
+}
+
+// 앱이 리뷰 대신 "리뷰할 수 없다"는 안내문을 남기는 경우가 있다(계정 연결 필요, 할당량 초과 등).
 // 그때만 종료 신호로 본다. 접수 회신 같은 일반 코멘트까지 실패로 처리하면
 // 리뷰가 도착하기도 전에 폴링을 멈춰 결과를 통째로 놓친다.
+// 안내문이 여러 개면 마지막 것이 가장 구체적이다(접수 회신 뒤에 사유가 따라온다).
 function findBlockingReply(repo, pr, source, sinceIso) {
   if (!source.blocked) return null;
   return fetchBotIssueComments(repo, pr, source.bot, sinceIso)
-    .find((c) => source.blocked.test(c.body ?? '')) ?? null;
+    .filter((c) => source.blocked.test(c.body ?? '')).at(-1) ?? null;
 }
 
-// 접수 회신은 내용이 없어 PR 대화만 어지럽힌다. 지난 실행에서 쌓인 것까지 함께
-// 접어야 PR이 깨끗해지므로 시각으로 거르지 않는다.
-// "리뷰 불가" 안내문은 지금 것만 남기고 지난 것은 접는다. 이미 해소된 문제를
-// 계속 보여줄 이유가 없다.
-function findNoiseCommentIds(repo, pr, source, sinceIso) {
+// 접수 회신은 내용이 없고 "리뷰 불가" 안내문은 사유가 통합 코멘트에 실리므로 둘 다 접는다.
+// 지난 실행에서 쌓인 것까지 함께 접어야 PR에 코멘트가 하나만 남는다.
+function findNoiseCommentIds(repo, pr, source) {
   return fetchBotIssueComments(repo, pr, source.bot, '')
     .filter((c) => {
       const body = c.body ?? '';
-      if (source.noise?.test(body)) return true;
-      return source.blocked?.test(body) && c.created_at < sinceIso;
+      return Boolean(source.noise?.test(body) || source.blocked?.test(body));
     })
     .map((c) => c.node_id)
     .filter(Boolean);
@@ -242,7 +255,7 @@ async function main() {
   const startedAt = fetchTriggerTime(opts.repo, opts['trigger-comment-id']);
   const deadline = Date.now() + Number(opts.timeout) * 1000;
   let reason = '';
-  let failed = false;
+  let blockedNote = '';
 
   while (Date.now() < deadline && !reason) {
     if (fetchReviews(opts.repo, opts.pr).some((r) => r.login === source.bot && r.commit_id === opts.sha)) {
@@ -256,8 +269,8 @@ async function main() {
     // 리뷰 대신 "리뷰할 수 없다"는 안내문을 남겼다면 더 기다려도 소용없다.
     const blocked = findBlockingReply(opts.repo, opts.pr, source, startedAt);
     if (blocked) {
-      console.error(`${opts.source} 가 리뷰할 수 없다고 알려왔습니다: ${blocked.body.split('\n')[0].slice(0, 160)}`);
-      failed = true;
+      blockedNote = summarizeReply(blocked.body);
+      console.error(`${opts.source} 가 리뷰할 수 없다고 알려왔습니다: ${blockedNote}`);
       break;
     }
 
@@ -266,15 +279,19 @@ async function main() {
   }
 
   if (!reason) {
-    if (!failed) console.error(`${opts.source} 리뷰를 기다리다 시간이 초과됐습니다.`);
+    const note = blockedNote || '리뷰를 기다리다 시간이 초과됐습니다.';
+    if (!blockedNote) console.error(`${opts.source} ${note}`);
     console.error(`${opts.source}: 이번 실행에서는 건너뜁니다.`);
-    if (opts.out) writeFileSync(opts.out, JSON.stringify({ summary: '', findings: [] }), 'utf8');
-    if (opts['ids-out']) writeFileSync(opts['ids-out'], '', 'utf8');
+    // 실패해도 안내 코멘트는 접는다. 사유는 note 로 통합 코멘트에 실리므로
+    // PR 대화에 원본을 남겨둘 이유가 없다.
+    const noiseIds = findNoiseCommentIds(opts.repo, opts.pr, source);
+    if (opts.out) writeFileSync(opts.out, JSON.stringify({ summary: '', findings: [], note }), 'utf8');
+    if (opts['ids-out']) writeFileSync(opts['ids-out'], noiseIds.join('\n'), 'utf8');
     process.exit(1);
   }
 
   const { findings, nodeIds } = harvest(opts.repo, opts.pr, opts.sha, source);
-  const noiseIds = findNoiseCommentIds(opts.repo, opts.pr, source, startedAt);
+  const noiseIds = findNoiseCommentIds(opts.repo, opts.pr, source);
   console.log(`${opts.source} 수확 완료 (${reason}): ${findings.length}건, 접을 코멘트 ${nodeIds.length + noiseIds.length}건`);
 
   if (opts.out) writeFileSync(opts.out, JSON.stringify({ summary: '', findings }, null, 2), 'utf8');
