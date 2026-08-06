@@ -136,15 +136,26 @@ function parseArgs(argv) {
 function fetchReviews(repo, pr) {
   return ghJsonLines([
     'api', '--paginate', `repos/${repo}/pulls/${pr}/reviews`,
-    '--jq', '.[] | {node_id, login: .user.login, commit_id}',
+    '--jq', '.[] | {login: .user.login, commit_id, submitted_at}',
   ]);
 }
 
 function fetchReviewComments(repo, pr) {
   return ghJsonLines([
     'api', '--paginate', `repos/${repo}/pulls/${pr}/comments`,
-    '--jq', '.[] | {node_id, login: .user.login, commit_id, original_commit_id, path, line, start_line, original_line, body}',
+    '--jq', '.[] | {node_id, login: .user.login, created_at, commit_id, original_commit_id, path, line, start_line, original_line, body}',
   ]);
+}
+
+// 이번 요청에 대한 리뷰가 올라왔는지 본다. SHA만 보면 안 된다. 같은 SHA로 workflow를
+// 재실행하거나 PR을 다시 열면 이전 리뷰가 그대로 남아 있어, 요청하자마자 그걸
+// 완료 신호로 오인하고 수확을 끝내 버린다. 요청 시각도 함께 확인한다.
+function hasFreshReview(repo, pr, source, sha, sinceIso) {
+  return fetchReviews(repo, pr).some(
+    (r) => r.login === source.bot
+      && r.commit_id === sha
+      && (!sinceIso || (r.submitted_at && r.submitted_at >= sinceIso)),
+  );
 }
 
 // 앱은 지적이 없을 때만 👍 로 반응한다. 👀 같은 "접수했음" 반응까지 완료로 보면
@@ -222,9 +233,15 @@ function findNoiseCommentIds(repo, pr, source) {
     .filter(Boolean);
 }
 
-function harvest(repo, pr, sha, source) {
-  const comments = fetchReviewComments(repo, pr).filter(
-    (c) => c.login === source.bot && (c.commit_id === sha || c.original_commit_id === sha),
+function harvest(repo, pr, sha, source, sinceIso) {
+  const mine = fetchReviewComments(repo, pr).filter((c) => c.login === source.bot);
+
+  // GitHub은 코멘트가 붙은 줄이 살아 있으면 commit_id 를 최신 커밋으로 옮겨 준다.
+  // 그래서 SHA로만 거르면 지난 커밋에서 이미 해결한 지적이 이번 라운드 결과인 척
+  // 계속 다시 실린다. 요청 시각 이후에 달린 코멘트만 이번 지적으로 본다.
+  const comments = mine.filter(
+    (c) => (!sinceIso || c.created_at >= sinceIso)
+      && (c.commit_id === sha || c.original_commit_id === sha),
   );
 
   const findings = comments.map((c) => {
@@ -241,7 +258,10 @@ function harvest(repo, pr, sha, source) {
     };
   });
 
-  return { findings, nodeIds: comments.map((c) => c.node_id).filter(Boolean) };
+  // 접는 것은 이번 라운드 것만이 아니라 봇이 남긴 모든 리뷰 코멘트다. 취소된 실행이
+  // 뒤늦게 남긴 이전 커밋 코멘트는 어느 라운드의 수확에도 안 잡혀 영영 펼쳐진 채로
+  // 남는다. 통합 코멘트가 현재 지적을 모두 담고 있으므로 원본은 접어도 된다.
+  return { findings, nodeIds: mine.map((c) => c.node_id).filter(Boolean) };
 }
 
 async function main() {
@@ -253,12 +273,15 @@ async function main() {
   }
 
   const startedAt = fetchTriggerTime(opts.repo, opts['trigger-comment-id']);
+  // 요청 코멘트가 없으면(요청이 실패한 경우) 라운드를 시각으로 가를 근거가 없다.
+  // 앱이 스스로 남긴 리뷰까지 놓치지 않도록 그때는 시각 조건 없이 SHA만 본다.
+  const roundStart = opts['trigger-comment-id'] ? startedAt : '';
   const deadline = Date.now() + Number(opts.timeout) * 1000;
   let reason = '';
   let blockedNote = '';
 
   while (Date.now() < deadline && !reason) {
-    if (fetchReviews(opts.repo, opts.pr).some((r) => r.login === source.bot && r.commit_id === opts.sha)) {
+    if (hasFreshReview(opts.repo, opts.pr, source, opts.sha, roundStart)) {
       reason = '리뷰 게시됨';
       break;
     }
@@ -290,7 +313,7 @@ async function main() {
     process.exit(1);
   }
 
-  const { findings, nodeIds } = harvest(opts.repo, opts.pr, opts.sha, source);
+  const { findings, nodeIds } = harvest(opts.repo, opts.pr, opts.sha, source, roundStart);
   const noiseIds = findNoiseCommentIds(opts.repo, opts.pr, source);
   console.log(`${opts.source} 수확 완료 (${reason}): ${findings.length}건, 접을 코멘트 ${nodeIds.length + noiseIds.length}건`);
 
