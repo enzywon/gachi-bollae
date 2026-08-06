@@ -107,6 +107,8 @@ const SOURCES = {
     blocked: /create a Codex account|connect to github/i,
     // 리뷰 내용이 없는 접수 회신. 통합 코멘트에 이미 반영됐으므로 접는다.
     noise: null,
+    // 커밋 상태를 남기지 않는다.
+    status: null,
   },
   coderabbit: {
     bot: 'coderabbitai[bot]',
@@ -115,6 +117,13 @@ const SOURCES = {
     // 타임아웃까지 기다리게 된다.
     blocked: /Review skipped|Review limit reached|Review rate limited|rate limited by coderabbit/i,
     noise: /auto-generated reply by CodeRabbit/i,
+    // 커밋 상태에 진행 결과를 남긴다. 리뷰 객체보다 빠르고, 무엇보다 지적이 0건이면
+    // 리뷰 객체를 아예 만들지 않으므로 이것 말고는 완료를 알 방법이 없다.
+    status: {
+      context: 'CodeRabbit',
+      done: /Review completed/i,
+      blocked: /Review skipped|rate limited|Review failed|Review error/i,
+    },
   },
 };
 
@@ -156,6 +165,25 @@ function hasFreshReview(repo, pr, source, sha, sinceIso) {
       && r.commit_id === sha
       && (!sinceIso || (r.submitted_at && r.submitted_at >= sinceIso)),
   );
+}
+
+// 커밋 상태에 남는 리뷰 진행 결과. 요청 이후에 갱신된 것만 이번 요청에 대한 응답으로
+// 본다. push 직후 앱이 "자동 리뷰 꺼짐"을 적어 두는데, 그건 우리 요청과 무관하므로
+// 그걸 실패로 읽으면 정작 요청에 대한 리뷰를 기다리지 않고 끝내 버린다.
+function fetchFreshStatus(repo, sha, source, sinceIso) {
+  if (!source.status) return null;
+  let latest;
+  try {
+    latest = ghJsonLines([
+      'api', `repos/${repo}/commits/${sha}/status`,
+      '--jq', `.statuses[] | select(.context == "${source.status.context}") | {description, updated_at}`,
+    ]).at(-1);
+  } catch {
+    return null;
+  }
+  if (!latest) return null;
+  if (sinceIso && !(latest.updated_at && latest.updated_at >= sinceIso)) return null;
+  return latest;
 }
 
 // 앱은 지적이 없을 때만 👍 로 반응한다. 👀 같은 "접수했음" 반응까지 완료로 보면
@@ -279,6 +307,9 @@ async function main() {
   const deadline = Date.now() + Number(opts.timeout) * 1000;
   let reason = '';
   let blockedNote = '';
+  // 커밋 상태로 완료를 알았을 때만 쓴다. 상태가 코멘트보다 먼저 보일 수 있어
+  // 곧장 수확하면 0건으로 단정할 수 있다.
+  let graceMs = 0;
 
   while (Date.now() < deadline && !reason) {
     if (hasFreshReview(opts.repo, opts.pr, source, opts.sha, roundStart)) {
@@ -289,6 +320,20 @@ async function main() {
       reason = '지적 없음(👍 반응)';
       break;
     }
+
+    // 지적이 0건이면 리뷰 객체가 생기지 않는다. 커밋 상태만이 완료를 알려준다.
+    const status = fetchFreshStatus(opts.repo, opts.sha, source, roundStart);
+    if (status && source.status.done.test(status.description ?? '')) {
+      reason = `커밋 상태(${status.description})`;
+      graceMs = POLL_INTERVAL_MS;
+      break;
+    }
+    if (status && source.status.blocked.test(status.description ?? '')) {
+      blockedNote = status.description ?? '';
+      console.error(`${opts.source} 커밋 상태가 리뷰 불가를 알려왔습니다: ${blockedNote}`);
+      break;
+    }
+
     // 리뷰 대신 "리뷰할 수 없다"는 안내문을 남겼다면 더 기다려도 소용없다.
     const blocked = findBlockingReply(opts.repo, opts.pr, source, startedAt);
     if (blocked) {
@@ -299,6 +344,11 @@ async function main() {
 
     console.log(`${opts.source} 리뷰 대기 중... (남은 시간 ${Math.round((deadline - Date.now()) / 1000)}초)`);
     await new Promise((resolve) => { setTimeout(resolve, POLL_INTERVAL_MS); });
+  }
+
+  if (graceMs) {
+    console.log(`상태로 완료를 확인했습니다. 코멘트가 도착할 시간을 ${graceMs / 1000}초 줍니다.`);
+    await new Promise((resolve) => { setTimeout(resolve, graceMs); });
   }
 
   if (!reason) {
