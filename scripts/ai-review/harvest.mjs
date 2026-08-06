@@ -122,6 +122,11 @@ const SOURCES = {
     status: {
       context: 'CodeRabbit',
       done: /Review completed/i,
+      // 자동 리뷰를 끈 것은 우리 설정이다. 실패가 아니라 예상된 상태이고, 그 뒤에 우리가
+      // 명시적으로 요청한 리뷰가 따로 진행된다. 이걸 실패로 읽으면 정작 요청한 리뷰를
+      // 기다리지 않고 끝낸다. 실제로 이 상태는 요청 5초 전에 찍혀 시각 조건만으로는
+      // 아슬아슬하게 걸러진다. 문구로도 걸러 둔다.
+      ignore: /automatic reviews are disabled|Review queued|Review in progress/i,
       blocked: /Review skipped|rate limited|Review failed|Review error/i,
     },
   },
@@ -145,25 +150,28 @@ function parseArgs(argv) {
 function fetchReviews(repo, pr) {
   return ghJsonLines([
     'api', '--paginate', `repos/${repo}/pulls/${pr}/reviews`,
-    '--jq', '.[] | {login: .user.login, commit_id, submitted_at}',
+    '--jq', '.[] | {id, login: .user.login, commit_id, submitted_at}',
   ]);
 }
 
 function fetchReviewComments(repo, pr) {
   return ghJsonLines([
     'api', '--paginate', `repos/${repo}/pulls/${pr}/comments`,
-    '--jq', '.[] | {node_id, login: .user.login, created_at, commit_id, original_commit_id, path, line, start_line, original_line, body}',
+    '--jq', '.[] | {node_id, login: .user.login, created_at, pull_request_review_id, commit_id, original_commit_id, path, line, start_line, original_line, body}',
   ]);
 }
 
-// 이번 요청에 대한 리뷰가 올라왔는지 본다. SHA만 보면 안 된다. 같은 SHA로 workflow를
-// 재실행하거나 PR을 다시 열면 이전 리뷰가 그대로 남아 있어, 요청하자마자 그걸
-// 완료 신호로 오인하고 수확을 끝내 버린다. 요청 시각도 함께 확인한다.
-function hasFreshReview(repo, pr, source, sha, sinceIso) {
-  return fetchReviews(repo, pr).some(
-    (r) => r.login === source.bot
-      && r.commit_id === sha
-      && (!sinceIso || (r.submitted_at && r.submitted_at >= sinceIso)),
+// 이번 요청에 대한 리뷰들의 id. SHA만 보면 안 된다. 같은 SHA로 workflow를 재실행하거나
+// PR을 다시 열면 이전 리뷰가 그대로 남아 있어, 요청하자마자 그걸 완료 신호로 오인한다.
+// 리뷰의 commit_id 는 코멘트의 것과 달리 나중에 바뀌지 않아 라운드 판별에 쓸 수 있다.
+function freshReviewIds(repo, pr, source, sha, sinceIso) {
+  return new Set(
+    fetchReviews(repo, pr)
+      .filter((r) => r.login === source.bot
+        && r.commit_id === sha
+        && (!sinceIso || (r.submitted_at && r.submitted_at >= sinceIso)))
+      .map((r) => r.id)
+      .filter((id) => id !== undefined && id !== null),
   );
 }
 
@@ -261,16 +269,18 @@ function findNoiseCommentIds(repo, pr, source) {
     .filter(Boolean);
 }
 
-function harvest(repo, pr, sha, source, sinceIso) {
+function harvest(repo, pr, sha, source, sinceIso, reviewIds) {
   const mine = fetchReviewComments(repo, pr).filter((c) => c.login === source.bot);
 
-  // GitHub은 코멘트가 붙은 줄이 살아 있으면 commit_id 를 최신 커밋으로 옮겨 준다.
-  // 그래서 SHA로만 거르면 지난 커밋에서 이미 해결한 지적이 이번 라운드 결과인 척
-  // 계속 다시 실린다. 요청 시각 이후에 달린 코멘트만 이번 지적으로 본다.
-  const comments = mine.filter(
-    (c) => (!sinceIso || c.created_at >= sinceIso)
-      && (c.commit_id === sha || c.original_commit_id === sha),
-  );
+  // 코멘트의 commit_id 는 믿을 수 없다. GitHub은 코멘트가 붙은 줄이 살아 있으면 그 값을
+  // 최신 커밋으로 옮겨 주기 때문에, 지난 커밋에서 이미 해결한 지적이 이번 라운드 결과인
+  // 척 계속 다시 실린다. 취소된 실행이 뒤늦게 남긴 코멘트도 같은 경로로 섞여 든다.
+  // 그래서 소속 리뷰(pull_request_review_id)로 라운드를 가른다. 리뷰의 commit_id 는
+  // 고정이라 나중에 바뀌지 않는다.
+  // 리뷰에 속하지 않은 단독 코멘트만 예전처럼 시각과 SHA로 거른다.
+  const comments = mine.filter((c) => (c.pull_request_review_id
+    ? reviewIds.has(c.pull_request_review_id)
+    : (!sinceIso || c.created_at >= sinceIso) && (c.commit_id === sha || c.original_commit_id === sha)));
 
   const findings = comments.map((c) => {
     const parsed = source.parse(c.body ?? '');
@@ -312,25 +322,31 @@ async function main() {
   let graceMs = 0;
 
   while (Date.now() < deadline && !reason) {
-    if (hasFreshReview(opts.repo, opts.pr, source, opts.sha, roundStart)) {
+    // 커밋 상태를 남기는 리뷰어는 그것만 완료 신호로 본다. CodeRabbit 은 진짜 리뷰를
+    // 올리기 전에 다른 용도의 리뷰 객체를 하나 더 만든다(예: 봇 코멘트에 대한 회신).
+    // 리뷰 객체가 보인다고 끝내면 그 중간 객체에 걸려 빈손으로 92초 일찍 끝난다.
+    // 지적이 0건이면 리뷰 객체 자체가 생기지 않으므로 어차피 상태를 봐야 한다.
+    const status = fetchFreshStatus(opts.repo, opts.sha, source, roundStart);
+    const description = status?.description ?? '';
+    const settled = status && !source.status.ignore.test(description);
+    if (settled && source.status.done.test(description)) {
+      reason = `커밋 상태(${description})`;
+      graceMs = POLL_INTERVAL_MS;
+      break;
+    }
+    if (settled && source.status.blocked.test(description)) {
+      blockedNote = description;
+      console.error(`${opts.source} 커밋 상태가 리뷰 불가를 알려왔습니다: ${blockedNote}`);
+      break;
+    }
+
+    if (!source.status
+      && freshReviewIds(opts.repo, opts.pr, source, opts.sha, roundStart).size > 0) {
       reason = '리뷰 게시됨';
       break;
     }
     if (hasThumbsUp(opts.repo, opts['trigger-comment-id'], source.bot)) {
       reason = '지적 없음(👍 반응)';
-      break;
-    }
-
-    // 지적이 0건이면 리뷰 객체가 생기지 않는다. 커밋 상태만이 완료를 알려준다.
-    const status = fetchFreshStatus(opts.repo, opts.sha, source, roundStart);
-    if (status && source.status.done.test(status.description ?? '')) {
-      reason = `커밋 상태(${status.description})`;
-      graceMs = POLL_INTERVAL_MS;
-      break;
-    }
-    if (status && source.status.blocked.test(status.description ?? '')) {
-      blockedNote = status.description ?? '';
-      console.error(`${opts.source} 커밋 상태가 리뷰 불가를 알려왔습니다: ${blockedNote}`);
       break;
     }
 
@@ -363,7 +379,10 @@ async function main() {
     process.exit(1);
   }
 
-  const { findings, nodeIds } = harvest(opts.repo, opts.pr, opts.sha, source, roundStart);
+  // 수확 직전에 다시 읽는다. 상태로 완료를 안 경우 리뷰 id 를 아직 모르고,
+  // grace 를 기다리는 사이에 리뷰가 올라왔을 수도 있다.
+  const reviewIds = freshReviewIds(opts.repo, opts.pr, source, opts.sha, roundStart);
+  const { findings, nodeIds } = harvest(opts.repo, opts.pr, opts.sha, source, roundStart, reviewIds);
   const noiseIds = findNoiseCommentIds(opts.repo, opts.pr, source);
   console.log(`${opts.source} 수확 완료 (${reason}): ${findings.length}건, 접을 코멘트 ${nodeIds.length + noiseIds.length}건`);
 

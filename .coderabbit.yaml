@@ -19,8 +19,12 @@ reviews:
   suggested_reviewers: false
   # 리뷰가 도는 동안 붙는 잡담 코멘트.
   in_progress_fortune: false
-  # review_progress / commit_status 는 코멘트가 아니라 체크·커밋 상태라 그대로 둔다.
-  # PR 체크 목록에서 CodeRabbit 진행 상황을 보는 통로다.
+  # 수확기가 "CodeRabbit" 커밋 상태의 Review completed 를 완료 신호로 쓴다. 지적이 0건이면
+  # 리뷰 객체가 생기지 않아 이것 말고는 완료를 알 방법이 없다. 그런데 commit_status 는
+  # 설정 문서상 review_progress 가 꺼져 있을 때만 쓰인다. 기본값에 기대면 언제 끊길지
+  # 모르므로 둘 다 명시한다. 코멘트가 아니라 커밋 상태라 PR 대화를 어지럽히지 않는다.
+  review_progress: false
+  commit_status: true
   auto_review:
     # CI가 draft 여부와 무관하게 @coderabbitai review 로 직접 요청한다.
     # 자동 리뷰까지 켜두면 같은 커밋을 두 번 리뷰해 할당량을 두 배로 쓰고,
