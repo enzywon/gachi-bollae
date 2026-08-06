@@ -116,7 +116,9 @@ const SOURCES = {
     // 할당량이 차면 리뷰를 아예 시작하지 않는다. 이걸 못 알아보면 오지 않을 리뷰를
     // 타임아웃까지 기다리게 된다.
     blocked: /Review skipped|Review limit reached|Review rate limited|rate limited by coderabbit/i,
-    noise: /auto-generated reply by CodeRabbit/i,
+    // 접수 회신과 walkthrough 요약. 설정으로 walkthrough 항목을 다 꺼도 앱은 기존
+    // 요약 코멘트를 지우지 않고 갱신만 하므로, 이미 달린 것은 접어서 치워야 한다.
+    noise: /auto-generated reply by CodeRabbit|summarize by coderabbit\.ai|walkthrough_start/i,
     // 커밋 상태에 진행 결과를 남긴다. 리뷰 객체보다 빠르고, 무엇보다 지적이 0건이면
     // 리뷰 객체를 아예 만들지 않으므로 이것 말고는 완료를 알 방법이 없다.
     status: {

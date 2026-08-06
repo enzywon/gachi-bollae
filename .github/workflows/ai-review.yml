@@ -16,6 +16,11 @@ concurrency:
   group: ai-review-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
+env:
+  # 우리가 단 요청 코멘트임을 알리는 표식. 취소된 실행이 남긴 것까지 찾아 지우는 데 쓴다.
+  # 사람이 손으로 남긴 요청에는 이 표식이 없으므로 지우지 않는다.
+  REQUEST_MARKER: '<!-- ai-review-request -->'
+
 jobs:
   review:
     name: AI 리뷰
@@ -61,6 +66,7 @@ jobs:
           ACTIONS_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          REQUEST_MARKER: ${{ env.REQUEST_MARKER }}
         shell: bash
         run: |
           set -uo pipefail
@@ -77,16 +83,24 @@ jobs:
           }
 
           # 앱은 draft PR을 자동 리뷰하지 않으므로 명시적으로 요청한다.
-          # 사용자 토큰을 먼저 쓰고(구독 귀속이 명확하다) 안 되면 Actions 토큰으로 넘어간다.
-          for entry in "codex:@codex review" "coderabbit:@coderabbitai review"; do
+          # 사용자 토큰을 먼저 쓴다. 구독 귀속이 명확하다.
+          # 마지막 필드는 Actions 토큰으로 재시도해도 되는지다. CodeRabbit은 봇이 쓴
+          # 코멘트를 무시한다("Skipped: comment is from another GitHub bot"). 재시도하면
+          # 리뷰는 시작되지 않으면서 요청 ID만 생겨, 수확이 오지 않을 리뷰를 기다린다.
+          for entry in "codex:@codex review:yes" "coderabbit:@coderabbitai review:no"; do
             name="${entry%%:*}"
-            body="${entry#*:}"
+            rest="${entry#*:}"
+            command="${rest%:*}"
+            bot_ok="${rest##*:}"
+            # 취소된 실행이 남긴 요청을 나중에 찾아 지우려면 표식이 필요하다.
+            # 명령은 첫 줄에 그대로 두고 표식은 아래에 붙인다. HTML 주석이라 보이지 않는다.
+            body=$(printf '%s\n\n%s' "$command" "$REQUEST_MARKER")
 
             id=""
             if [ -n "${USER_TOKEN:-}" ]; then
               id=$(post "$USER_TOKEN" "$body") || true
             fi
-            if [ -z "$id" ]; then
+            if [ -z "$id" ] && [ "$bot_ok" = "yes" ]; then
               echo "$name: 사용자 토큰으로 요청하지 못해 Actions 토큰으로 재시도합니다."
               id=$(post "$ACTIONS_TOKEN" "$body") || true
             fi
@@ -124,9 +138,11 @@ jobs:
             --out ai-review-out/codex.json \
             --ids-out ai-review-out/codex-node-ids.txt
 
+      # CodeRabbit 은 auto_review 를 꺼 두어 요청 없이는 리뷰하지 않는다. 요청을 못
+      # 보냈으면 기다릴 이유가 없으므로 아예 건너뛴다. 통합 코멘트에 "건너뜀"으로 남는다.
       - name: CodeRabbit 결과 수확
         id: coderabbit
-        if: steps.diff.outputs.empty == 'false'
+        if: steps.diff.outputs.empty == 'false' && steps.request.outputs.coderabbit-comment-id != ''
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
@@ -143,9 +159,8 @@ jobs:
 
       # 요청 코멘트는 역할을 다했으므로 지워서 PR 대화를 깨끗하게 둔다.
       # 이번 실행이 단 것만 지우면 부족하다. 요청을 올린 뒤 다음 push 로 실행이 취소되면
-      # 그 코멘트는 어느 실행도 치우지 않아 PR 에 영영 쌓인다. 본문이 요청 명령과 똑같은
-      # 코멘트를 모두 찾아 지운다. 사람이 손으로 남긴 요청까지 지우게 되지만, 그건 이미
-      # 앱이 처리했고 통합 코멘트에 결과가 들어 있다.
+      # 그 코멘트는 어느 실행도 치우지 않아 PR 에 영영 쌓인다. 표식이 붙은 코멘트를 모두
+      # 찾아 지운다. 사람이 손으로 남긴 요청에는 표식이 없으므로 건드리지 않는다.
       - name: 요청 코멘트 정리
         if: always()
         continue-on-error: true
@@ -154,11 +169,14 @@ jobs:
           ACTIONS_TOKEN: ${{ github.token }}
           REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          REQUEST_MARKER: ${{ env.REQUEST_MARKER }}
         shell: bash
         run: |
+          # gh api 는 jq 의 --arg 를 받지 않는다. 표식은 우리가 정한 고정 문자열이고
+          # 따옴표가 없으므로 필터에 그대로 끼워 넣어도 안전하다.
           ids=$(GH_TOKEN="$ACTIONS_TOKEN" gh api --paginate \
             "repos/${REPOSITORY}/issues/${PR_NUMBER}/comments" \
-            --jq '.[] | select(.body | test("^\\s*@(codex|coderabbitai) review\\s*$"; "i")) | .id' 2>/dev/null) || ids=""
+            --jq ".[] | select(.body | contains(\"${REQUEST_MARKER}\")) | .id" 2>/dev/null) || ids=""
 
           for id in $ids; do
             # 누가 달았든 지울 수 있어야 하므로 두 토큰을 차례로 시도한다.
