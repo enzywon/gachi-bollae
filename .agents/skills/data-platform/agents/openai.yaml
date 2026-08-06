@@ -1,4 +1,4 @@
 interface:
   display_name: "Data Platform"
-  short_description: "Supabase 스키마·RLS·키 처리와 Vercel 환경 구성"
-  default_prompt: "Use $data-platform to design this Supabase schema and access change."
+  short_description: "Neon·Drizzle 스키마와 소유자 키 접근 규칙, 환경 변수 구성"
+  default_prompt: "Use $data-platform to design this schema and data access change."
