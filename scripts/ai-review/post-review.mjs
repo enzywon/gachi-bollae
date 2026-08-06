@@ -8,6 +8,9 @@
 //     --status codex=success,coderabbit=failure \
 //     codex=ai-review-out/codex.json \
 //     coderabbit=ai-review-out/coderabbit.jsonl
+//
+// --only-existing 을 주면 기존 코멘트가 있을 때만 갱신하고 새로 달지 않는다.
+// 리뷰할 diff가 없는 실행에서 지난 코멘트만 정리할 때 쓴다.
 
 import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync, existsSync, mkdtempSync } from 'node:fs';
@@ -55,10 +58,12 @@ const SOURCE_LABEL = {
 /** @typedef {{severity: string, file: string, line: number, title: string, detail: string, suggestion: string, source: string}} Finding */
 
 function parseArgs(argv) {
-  const opts = { repo: '', pr: '', sha: '', status: {}, sources: [] };
+  const opts = { repo: '', pr: '', sha: '', status: {}, sources: [], onlyExisting: false };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
-    if (arg === '--repo' || arg === '--pr' || arg === '--sha') {
+    if (arg === '--only-existing') {
+      opts.onlyExisting = true;
+    } else if (arg === '--repo' || arg === '--pr' || arg === '--sha') {
       opts[arg.slice(2)] = argv[i + 1] ?? '';
       i += 1;
     } else if (arg === '--status') {
@@ -216,23 +221,27 @@ function parseLoosely(text) {
 
 function readSource({ name, path }) {
   if (!path || !existsSync(path)) {
-    return { name, findings: [], summary: '', parsed: false };
+    return { name, findings: [], summary: '', note: '', parsed: false };
   }
   const text = readFileSync(path, 'utf8');
   const documents = parseLoosely(text);
   if (documents.length === 0) {
-    return { name, findings: [], summary: '', parsed: false };
+    return { name, findings: [], summary: '', note: '', parsed: false };
   }
 
   const findings = [];
   let summary = '';
+  // 수확이 실패했을 때 그 사유. 원본 안내 코멘트는 접히므로 여기 싣지 않으면
+  // 왜 리뷰가 없는지 알 길이 없어진다.
+  let note = '';
   for (const doc of documents) {
-    if (!summary && doc && typeof doc === 'object' && !Array.isArray(doc)) {
-      summary = firstString(doc, ['summary', 'overview', 'high_level_summary']);
+    if (doc && typeof doc === 'object' && !Array.isArray(doc)) {
+      if (!summary) summary = firstString(doc, ['summary', 'overview', 'high_level_summary']);
+      if (!note) note = firstString(doc, ['note']);
     }
     collectFindings(doc, name, findings);
   }
-  return { name, findings, summary, parsed: true };
+  return { name, findings, summary, note, parsed: true };
 }
 
 function dedupe(findings) {
@@ -330,7 +339,11 @@ function renderBody({ sources, statuses, findings, repo, sha }) {
   const meta = [shaShort ? `커밋 \`${shaShort}\` 기준` : '', renderStatusLine(sources, statuses)]
     .filter(Boolean)
     .join(' · ');
-  if (meta) parts.push(`> ${meta}`, '');
+  const metaLines = [
+    meta,
+    ...sources.filter((s) => s.note).map((s) => `⚠️ ${SOURCE_LABEL[s.name] ?? s.name}: ${s.note}`),
+  ].filter(Boolean);
+  if (metaLines.length > 0) parts.push(metaLines.map((line) => `> ${line}`).join('\n>\n'), '');
 
   const summaries = sources.filter((s) => s.summary);
   if (summaries.length > 0) {
@@ -401,8 +414,13 @@ function findStickyComment(repo, pr) {
   return null;
 }
 
-function upsertComment(repo, pr, body) {
+function upsertComment(repo, pr, body, onlyExisting) {
   const existing = findStickyComment(repo, pr);
+  // 리뷰할 게 없는 실행에서는 지난 코멘트만 정리하고 새로 달지는 않는다.
+  if (!existing && onlyExisting) {
+    console.log('갱신할 기존 코멘트가 없어 아무것도 하지 않습니다.');
+    return;
+  }
   if (existing && existing.body.trim() === body.trim()) {
     console.log(`변경 사항이 없어 코멘트를 그대로 둡니다 (id=${existing.id}).`);
     return;
@@ -439,7 +457,7 @@ function main() {
     return;
   }
 
-  upsertComment(opts.repo, opts.pr, body);
+  upsertComment(opts.repo, opts.pr, body, opts.onlyExisting);
 }
 
 main();

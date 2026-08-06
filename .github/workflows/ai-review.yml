@@ -99,8 +99,8 @@ jobs:
             echo "$name 리뷰를 요청했습니다. (코멘트 $id)"
           done
 
+      # diff가 비어도 지난 실행의 통합 코멘트를 정리해야 하므로 조건 없이 깐다.
       - name: Node.js 설정
-        if: steps.diff.outputs.empty == 'false'
         uses: actions/setup-node@v6
         with:
           node-version: 24
@@ -186,14 +186,19 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
+      # diff가 비어 리뷰를 건너뛴 실행에서도 돌려야 지난 지적이 남아 있지 않다.
+      # 그 경우엔 --only-existing 으로 기존 코멘트만 정리하고 새로 달지는 않는다.
       - name: 리뷰 코멘트 작성
         id: post
-        if: steps.diff.outputs.empty == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          node scripts/ai-review/post-review.mjs \
+          args=()
+          if [ "${{ steps.diff.outputs.empty }}" = "true" ]; then
+            args+=(--only-existing)
+          fi
+          node scripts/ai-review/post-review.mjs "${args[@]}" \
             --repo "${{ github.repository }}" \
             --pr "${{ github.event.pull_request.number }}" \
             --sha "${{ github.event.pull_request.head.sha }}" \
@@ -202,6 +207,9 @@ jobs:
             coderabbit=ai-review-out/coderabbit.json
 
       # 통합 코멘트가 올라간 뒤에만 접는다. 순서가 뒤바뀌면 리뷰가 사라진 것처럼 보인다.
+      # 수확이 실패해도 접는다. 실패 사유는 통합 코멘트에 실려 있고, 남겨두면
+      # 안내 코멘트가 PR에 그대로 쌓여 "코멘트 하나" 가 깨진다.
+      # 목록 파일이 없거나 비면 hide-comments 가 알아서 넘어간다.
       - name: 원본 코멘트 접기
         if: steps.post.outcome == 'success'
         continue-on-error: true
@@ -209,8 +217,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
-          [ "${{ steps.codex.outcome }}" = "success" ] \
-            && node scripts/ai-review/hide-comments.mjs ai-review-out/codex-node-ids.txt
-          [ "${{ steps.coderabbit.outcome }}" = "success" ] \
-            && node scripts/ai-review/hide-comments.mjs ai-review-out/coderabbit-node-ids.txt
-          exit 0
+          node scripts/ai-review/hide-comments.mjs ai-review-out/codex-node-ids.txt
+          node scripts/ai-review/hide-comments.mjs ai-review-out/coderabbit-node-ids.txt
