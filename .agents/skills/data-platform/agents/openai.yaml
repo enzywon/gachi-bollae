@@ -1,0 +1,4 @@
+interface:
+  display_name: "Data Platform"
+  short_description: "Supabase 스키마·RLS·키 처리와 Vercel 환경 구성"
+  default_prompt: "Use $data-platform to design this Supabase schema and access change."
