@@ -19,6 +19,12 @@
 
 Playwright skill의 wrapper는 실제 브라우저 작업을 요청했을 때 `npx`를 통해 `@playwright/cli`를 실행합니다. 외부 패키지 실행 승인은 일반 코드 변경과 분리해서 검토합니다.
 
+## 프로젝트 전용 도메인 skills
+
+- `recommendation-domain`: 상황·무드·취향 조건에서 어떤 콘텐츠를 왜 추천할지 결정하는 규칙과 랭킹
+
+도메인 skill은 추천 판단 자체를 담당합니다. 화면 구조와 스타일, 서버·데이터 접근은 각 영역의 skill에 맡깁니다.
+
 ## 프로젝트 전용 리뷰 skills
 
 - `pr-reviewer`: correctness와 회귀 중심 PR 리뷰
