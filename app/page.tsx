@@ -10,6 +10,13 @@ type Mode = "solo" | "together";
 type Reaction = "pick" | "skip" | "watched";
 
 
+const CONTEXT_POINTS = 35;
+const MOOD_POINTS = 25;
+const MY_TASTE_POINTS = 9;
+const SHARED_TASTE_POINTS = 8;
+const PARTNER_TASTE_POINTS = 4;
+const MAX_TAG_MATCHES = Math.max(...CONTENTS.map((item) => item.tags.length));
+
 function ToggleChip({
   active,
   onClick,
@@ -55,20 +62,32 @@ export default function Home() {
 
   const recommendations = useMemo(() => {
     const maxRuntime = duration === "30분 이내" ? 30 : duration === "60분 이내" ? 60 : 999;
+    const countMatches = (tastes: string[], item: DemoContent) =>
+      tastes.filter((taste) => item.tags.includes(taste)).length;
+
+    // 재생 시간과 OTT는 필수 조건이라 통과한 항목은 모두 만족한다.
+    // 점수에 넣어도 순위가 바뀌지 않으므로 적합도를 왜곡하지 않도록 제외한다.
     const score = (item: DemoContent) => {
       let points = 0;
-      if (item.contexts.includes(context)) points += 35;
-      if (item.moods.includes(mood)) points += 25;
-      points += myTastes.filter((taste) => item.tags.includes(taste)).length * 9;
+      if (item.contexts.includes(context)) points += CONTEXT_POINTS;
+      if (item.moods.includes(mood)) points += MOOD_POINTS;
+      const mine = countMatches(myTastes, item);
+      points += mine * MY_TASTE_POINTS;
       if (mode === "together") {
-        const partner = partnerTastes.filter((taste) => item.tags.includes(taste)).length;
-        const mine = myTastes.filter((taste) => item.tags.includes(taste)).length;
-        points += Math.min(mine, partner) * 8 + partner * 4;
+        const partner = countMatches(partnerTastes, item);
+        points += Math.min(mine, partner) * SHARED_TASTE_POINTS + partner * PARTNER_TASTE_POINTS;
       }
-      if (item.runtime <= maxRuntime) points += 15;
-      if (provider === "상관없음" || provider === item.provider) points += 10;
       return points;
     };
+
+    // 선택한 조건으로 받을 수 있는 최고 점수. 적합도의 분모가 된다.
+    const cap = (tastes: string[]) => Math.min(tastes.length, MAX_TAG_MATCHES);
+    let bestPossible = CONTEXT_POINTS + MOOD_POINTS + cap(myTastes) * MY_TASTE_POINTS;
+    if (mode === "together") {
+      bestPossible +=
+        Math.min(cap(myTastes), cap(partnerTastes)) * SHARED_TASTE_POINTS +
+        cap(partnerTastes) * PARTNER_TASTE_POINTS;
+    }
 
     const eligible = CONTENTS.filter((item) => {
       const durationOkay = item.runtime <= maxRuntime;
@@ -80,7 +99,10 @@ export default function Home() {
 
     if (eligible.length === 0) return [];
     const offset = refreshSeed % eligible.length;
-    return [...eligible.slice(offset), ...eligible.slice(0, offset)].slice(0, 3);
+    return [...eligible.slice(offset), ...eligible.slice(0, offset)]
+      .slice(0, 3)
+      .map((item) => ({ item, fit: Math.min(100, Math.round((score(item) / bestPossible) * 100)) }))
+      .sort((a, b) => b.fit - a.fit);
   }, [avoids, context, duration, format, mode, mood, myTastes, partnerTastes, provider, refreshSeed]);
 
   const reset = () => {
@@ -387,9 +409,17 @@ export default function Home() {
             )}
 
             <div className="result-grid">
-              {recommendations.map((item, index) => {
+              {recommendations.map(({ item, fit }, index) => {
                 const reaction = reactions[item.id];
                 const matchedTaste = [...myTastes, ...partnerTastes].find((taste) => item.tags.includes(taste));
+                // 점수에 실제로 반영된 근거만 노출한다.
+                const matchedReasons = [
+                  item.contexts.includes(context) ? `${context}에 잘 맞아요` : null,
+                  item.moods.includes(mood) ? "오늘 무드와 잘 맞아요" : null,
+                  matchedTaste ? `${matchedTaste} 취향 반영` : null,
+                  avoids.length > 0 ? "피하고 싶다고 한 요소가 없어요" : null,
+                ].filter((reason) => reason !== null);
+                const reasons = matchedReasons.length > 0 ? matchedReasons : ["선택한 필수 조건을 모두 만족해요"];
                 return (
                   <article key={item.id} className={`result-card ${reaction ? `reacted-${reaction}` : ""}`}>
                     <div className={`demo-poster ${item.palette}`}>
@@ -398,14 +428,12 @@ export default function Home() {
                       <div className="poster-title"><small>GACHI BOLLAE DEMO PICK</small><strong>{item.title}</strong></div>
                     </div>
                     <div className="result-body">
-                      <div className="result-topline"><span>{item.eyebrow}</span><b>{mode === "together" ? `${88 - index * 3}% 함께 만족` : `${92 - index * 3}% 적합`}</b></div>
+                      <div className="result-topline"><span>{item.eyebrow}</span><b>{mode === "together" ? `${fit}% 함께 만족` : `${fit}% 적합`}</b></div>
                       <h2>{item.title}</h2>
                       <div className="metadata"><span>{item.format}</span><span>{item.runtime}분</span><span>{item.provider}</span></div>
                       <p className="synopsis">{item.synopsis}</p>
                       <div className="reason-list">
-                        <span>✓ {context}에 잘 맞아요</span>
-                        <span>✓ {matchedTaste ? `${matchedTaste} 취향 반영` : "오늘 무드와 잘 맞아요"}</span>
-                        {item.avoid.length === 0 && <span>✓ 선택한 기피 요소가 없어요</span>}
+                        {reasons.map((reason) => <span key={reason}>✓ {reason}</span>)}
                       </div>
                       <button
                         type="button"
