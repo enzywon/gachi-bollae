@@ -22,10 +22,11 @@ There is no RLS. **The `ownerKey` predicate in the `WHERE` clause is the entire 
 `app/_lib/owner.ts` issues `gb_owner`, a `crypto.randomUUID()` in an `HttpOnly`, `SameSite=Lax`, one-year cookie, marked `Secure` in production only. This is device scoping, not authentication: losing the cookie loses the records, and holding the cookie value grants full access to them.
 
 1. **Every read, update, and delete filters on `ownerKey`.** The pattern is `and(eq(watchRecords.id, id), eq(watchRecords.ownerKey, ownerKey))`. A query that reaches a row by id alone is a data leak, not a shortcut — there is no second layer to catch it.
-2. **Another owner's row is 404, never 403.** `findRecord` returning null and the row not existing are indistinguishable to the caller by design. Do not add an error message that confirms an id exists.
-3. **Owner-dependent responses are `no-store`.** Use `jsonNoStore` from `app/_lib/api.ts`. The URL carries no owner, so a cached response can be served to the wrong cookie.
-4. **Cookies are issued on write, not on read.** `GET /api/records` without a cookie returns an empty result; only `resolveOwnerKey` + `jsonWithOwner` on a write mints one. Minting on read hands an identity to every crawler.
-5. **Input is validated at the boundary.** `app/_lib/validation.ts` throws `ValidationError`, which `errorResponse` maps to 400. Nothing in `records.ts` should re-check shapes, and nothing should reach Drizzle unvalidated.
+2. **`watch_records` is the only table that carries the owner.** Child tables have no `ownerKey` column and must never grow one — `reviews` is reached by joining `watchRecords` and filtering the parent, as `listRecords` and `upsertReview` do. A child query that stands on its own has no owner predicate to check, which is exactly the shape that leaks.
+3. **Another owner's row is 404, never 403.** `findRecord` returning null and the row not existing are indistinguishable to the caller by design. Do not add an error message that confirms an id exists.
+4. **Owner-dependent responses are `no-store`.** Use `jsonNoStore` from `app/_lib/api.ts`. The URL carries no owner, so a cached response can be served to the wrong cookie.
+5. **Cookies are issued on write, not on read.** `GET /api/records` without a cookie returns an empty result; only `resolveOwnerKey` + `jsonWithOwner` on a write mints one. Minting on read hands an identity to every crawler.
+6. **Input is validated at the boundary.** `app/_lib/validation.ts` throws `ValidationError`, which `errorResponse` maps to 400. Nothing in `records.ts` should re-check shapes, and nothing should reach Drizzle unvalidated.
 
 ## Schema rules
 
