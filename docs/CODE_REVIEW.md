@@ -49,4 +49,23 @@ AI 리뷰를 요청할 때는 “전체적으로 봐줘”보다 다음처럼 �
 실제 수정이 필요한 내용만 파일과 줄 번호를 붙여 코멘트해 줘.
 ```
 
+## 자동 AI 리뷰
+
+PR을 열거나 커밋을 푸시하면 `AI Review` 워크플로가 Codex와 CodeRabbit에 리뷰를 요청하고, 두 결과를 하나의 PR 코멘트로 합칩니다. draft 여부와 무관하게 동작합니다. 포크에서 올라온 PR은 시크릿이 전달되지 않으므로 건너뜁니다.
+
+- 두 리뷰어는 각자의 서버에서 돕니다. CI는 요청만 남기고 결과는 GitHub API로 걷어옵니다. 우리가 별도로 호출하는 API가 없으므로 플랜 한도 안에서는 추가 요금이 붙지 않습니다. 다만 한도를 넘긴 뒤에는 각 서비스 설정에 따라 과금될 수 있습니다. CodeRabbit은 usage-based reviews를 켜 두면 파일당 요금이 붙고, Codex는 한도 초과 시 크레딧을 씁니다. 한도에 걸리면 리뷰가 아예 시작되지 않으므로, 과금을 켤지 한도가 풀릴 때까지 기다릴지는 계정 설정에서 정합니다.
+- 원본 인라인 코멘트와 접수 회신은 통합 코멘트가 올라간 뒤 outdated로 접습니다. 삭제가 아니라 접는 것이라 필요하면 GitHub UI에서 다시 펼칠 수 있습니다.
+- 한쪽 리뷰어가 실패해도 나머지 결과는 그대로 게시되고, 실패 사유가 통합 코멘트 헤더에 표시됩니다. 리뷰 할당량이 차서 리뷰가 시작되지 않는 경우가 여기에 해당합니다.
+
+재검토가 필요하면 커밋을 푸시합니다. 워크플로가 `pull_request`의 `opened`, `synchronize`, `reopened`만 구독하므로, 커밋 없이 `@codex review`나 `@coderabbitai review`를 직접 남기면 앱은 리뷰하지만 워크플로가 돌지 않습니다. 그 결과는 통합 코멘트에 합쳐지지도, 접히지도 않고 원본 코멘트로 남습니다. 커밋을 더할 상황이 아니면 Actions에서 `AI Review` 실행을 재실행합니다.
+
+Codex 리뷰 요청은 `enzy-won` 계정 토큰으로 보냅니다. 저장소 관리자가 다음 설정을 한 번 완료해야 합니다.
+
+1. `enzy-won` 계정에서 Fine-grained personal access token을 만듭니다.
+2. Resource owner는 `enzywon` 조직, 접근 저장소는 `gachi-bollae` 하나만 선택합니다.
+3. Repository permissions에서 `Issues: Read and write`만 추가합니다. GitHub는 PR의 일반 댓글을 Issue comment로 처리합니다.
+4. 저장소의 `Settings > Secrets and variables > Actions`에 `ENZY_WON_CODEX_REVIEW_TOKEN` 이름으로 저장합니다.
+
+토큰은 파일이나 PR에 입력하지 않습니다. 만료일을 설정하고, 만료되거나 폐기한 뒤에는 같은 이름의 Secret만 교체합니다. 이 Secret이 없으면 워크플로는 Actions 토큰으로 리뷰를 요청하지만, 구독 귀속이 흐려집니다.
+
 협업자가 생기면 `.github/CODEOWNERS`를 추가하고 영역별 담당자에게 리뷰가 자동 요청되도록 확장합니다.

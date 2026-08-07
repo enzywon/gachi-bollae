@@ -1,0 +1,249 @@
+name: AI Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
+
+permissions:
+  contents: read
+  pull-requests: write
+  # PR 대화 코멘트는 이슈 코멘트로 취급된다. 요청 코멘트를 달고 지우는 데 필요하다.
+  issues: write
+  # CodeRabbit 완료 판정은 커밋 상태 조회에 기댄다. 공개 저장소라 지금은 이 권한이
+  # 없어도 읽히지만, 비공개로 돌리는 순간 조회가 막히고 조용히 타임아웃까지 기다린다.
+  statuses: read
+
+concurrency:
+  group: ai-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  # 우리가 단 요청 코멘트임을 알리는 표식. 취소된 실행이 남긴 것까지 찾아 지우는 데 쓴다.
+  # 사람이 손으로 남긴 요청에는 이 표식이 없으므로 지우지 않는다.
+  REQUEST_MARKER: '<!-- ai-review-request -->'
+
+jobs:
+  review:
+    name: AI 리뷰
+    # 포크에서 올라온 PR에는 시크릿이 전달되지 않으므로 건너뛴다.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: 저장소 체크아웃
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          # AI 리뷰어가 작업 트리 안에서 도는 만큼 .git/config 에 토큰을 남기지 않는다.
+          persist-credentials: false
+
+      # 리뷰어들은 각자 diff를 계산한다. 여기서는 리뷰할 게 있는지만 판정한다.
+      - name: 변경 여부 확인
+        id: diff
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        shell: bash
+        run: |
+          mkdir -p ai-review-out
+          base_sha=$(git merge-base "origin/$BASE_REF" HEAD)
+          if git diff --quiet "$base_sha" HEAD; then
+            echo "변경 사항이 없어 리뷰를 건너뜁니다."
+            echo "empty=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "empty=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # 두 리뷰어 모두 자기네 서버에서 돈다. 여기서는 리뷰를 요청만 하고 결과는
+      # 아래에서 GitHub API로 걷어온다. 그래야 각자의 구독으로 커버되어
+      # 별도 API 요금이 발생하지 않는다.
+      # 요청을 먼저 깔아둬야 두 리뷰가 병렬로 진행된다.
+      - name: 리뷰 요청
+        id: request
+        if: steps.diff.outputs.empty == 'false'
+        continue-on-error: true
+        env:
+          USER_TOKEN: ${{ secrets.ENZY_WON_CODEX_REVIEW_TOKEN }}
+          ACTIONS_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REQUEST_MARKER: ${{ env.REQUEST_MARKER }}
+        shell: bash
+        run: |
+          set -uo pipefail
+
+          # gh api 는 실패해도 응답 본문을 stdout 으로 뱉는다. 코멘트 id 는 숫자이므로
+          # 숫자가 아니면 실패로 본다. 이 검증이 없으면 에러 JSON 을 id 로 착각한다.
+          post() {
+            local out
+            out=$(GH_TOKEN="$1" gh api --method POST \
+              "repos/${REPOSITORY}/issues/${PR_NUMBER}/comments" \
+              --raw-field body="$2" --jq '.id' 2>/dev/null) || return 1
+            [[ "$out" =~ ^[0-9]+$ ]] || return 1
+            printf '%s' "$out"
+          }
+
+          # 앱은 draft PR을 자동 리뷰하지 않으므로 명시적으로 요청한다.
+          # 사용자 토큰을 먼저 쓴다. 구독 귀속이 명확하다.
+          # 마지막 필드는 Actions 토큰으로 재시도해도 되는지다. CodeRabbit은 봇이 쓴
+          # 코멘트를 무시한다("Skipped: comment is from another GitHub bot"). 재시도하면
+          # 리뷰는 시작되지 않으면서 요청 ID만 생겨, 수확이 오지 않을 리뷰를 기다린다.
+          for entry in "codex:@codex review:yes" "coderabbit:@coderabbitai review:no"; do
+            name="${entry%%:*}"
+            rest="${entry#*:}"
+            command="${rest%:*}"
+            bot_ok="${rest##*:}"
+            # 취소된 실행이 남긴 요청을 나중에 찾아 지우려면 표식이 필요하다.
+            # 명령은 첫 줄에 그대로 두고 표식은 아래에 붙인다. HTML 주석이라 보이지 않는다.
+            body=$(printf '%s\n\n%s' "$command" "$REQUEST_MARKER")
+
+            id=""
+            if [ -n "${USER_TOKEN:-}" ]; then
+              id=$(post "$USER_TOKEN" "$body") || true
+            fi
+            if [ -z "$id" ] && [ "$bot_ok" = "yes" ]; then
+              echo "$name: 사용자 토큰으로 요청하지 못해 Actions 토큰으로 재시도합니다."
+              id=$(post "$ACTIONS_TOKEN" "$body") || true
+            fi
+
+            if [ -z "$id" ]; then
+              echo "$name 리뷰를 요청하지 못했습니다."
+              continue
+            fi
+            echo "${name}-comment-id=$id" >> "$GITHUB_OUTPUT"
+            echo "$name 리뷰를 요청했습니다. (코멘트 $id)"
+          done
+
+      # diff가 비어도 지난 실행의 통합 코멘트를 정리해야 하므로 조건 없이 깐다.
+      - name: Node.js 설정
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Codex 결과 수확
+        id: codex
+        # 요청이 실패해도(앱이 스스로 리뷰한 경우) 수확은 시도한다. 다만 요청을 못 보냈으면
+        # 리뷰가 올 근거가 약하므로 짧게만 기다린다.
+        if: steps.diff.outputs.empty == 'false'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          node scripts/ai-review/harvest.mjs --source codex \
+            --repo "${{ github.repository }}" \
+            --pr "${{ github.event.pull_request.number }}" \
+            --sha "${{ github.event.pull_request.head.sha }}" \
+            --trigger-comment-id "${{ steps.request.outputs.codex-comment-id }}" \
+            --timeout "${{ steps.request.outputs.codex-comment-id != '' && 600 || 120 }}" \
+            --out ai-review-out/codex.json \
+            --ids-out ai-review-out/codex-node-ids.txt
+
+      # CodeRabbit 은 auto_review 를 꺼 두어 요청 없이는 리뷰하지 않는다. 요청을 못
+      # 보냈으면 기다릴 이유가 없으므로 아예 건너뛴다. 통합 코멘트에 "건너뜀"으로 남는다.
+      - name: CodeRabbit 결과 수확
+        id: coderabbit
+        if: steps.diff.outputs.empty == 'false' && steps.request.outputs.coderabbit-comment-id != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          node scripts/ai-review/harvest.mjs --source coderabbit \
+            --repo "${{ github.repository }}" \
+            --pr "${{ github.event.pull_request.number }}" \
+            --sha "${{ github.event.pull_request.head.sha }}" \
+            --trigger-comment-id "${{ steps.request.outputs.coderabbit-comment-id }}" \
+            --timeout "${{ steps.request.outputs.coderabbit-comment-id != '' && 600 || 120 }}" \
+            --out ai-review-out/coderabbit.json \
+            --ids-out ai-review-out/coderabbit-node-ids.txt
+
+      # 요청 코멘트는 역할을 다했으므로 지워서 PR 대화를 깨끗하게 둔다.
+      # 이번 실행이 단 것만 지우면 부족하다. 요청을 올린 뒤 다음 push 로 실행이 취소되면
+      # 그 코멘트는 어느 실행도 치우지 않아 PR 에 영영 쌓인다. 표식이 붙은 코멘트를 모두
+      # 찾아 지운다. 사람이 손으로 남긴 요청에는 표식이 없으므로 건드리지 않는다.
+      - name: 요청 코멘트 정리
+        if: always()
+        continue-on-error: true
+        env:
+          USER_TOKEN: ${{ secrets.ENZY_WON_CODEX_REVIEW_TOKEN }}
+          ACTIONS_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REQUEST_MARKER: ${{ env.REQUEST_MARKER }}
+        shell: bash
+        run: |
+          # gh api 는 jq 의 --arg 를 받지 않는다. 표식은 우리가 정한 고정 문자열이고
+          # 따옴표가 없으므로 필터에 그대로 끼워 넣어도 안전하다.
+          ids=$(GH_TOKEN="$ACTIONS_TOKEN" gh api --paginate \
+            "repos/${REPOSITORY}/issues/${PR_NUMBER}/comments" \
+            --jq ".[] | select(.body | contains(\"${REQUEST_MARKER}\")) | .id" 2>/dev/null) || ids=""
+
+          for id in $ids; do
+            # 누가 달았든 지울 수 있어야 하므로 두 토큰을 차례로 시도한다.
+            GH_TOKEN="${USER_TOKEN:-$ACTIONS_TOKEN}" gh api --method DELETE \
+              "repos/${REPOSITORY}/issues/comments/$id" 2>/dev/null \
+              || GH_TOKEN="$ACTIONS_TOKEN" gh api --method DELETE \
+                "repos/${REPOSITORY}/issues/comments/$id" 2>/dev/null \
+              || echo "요청 코멘트 $id 를 지우지 못했습니다."
+          done
+
+      # 리뷰어 출력 파싱이 어긋났을 때 원본을 봐야 원인을 알 수 있다.
+      - name: 리뷰어 원본 출력 진단
+        if: always() && steps.diff.outputs.empty == 'false'
+        shell: bash
+        run: |
+          for file in ai-review-out/codex.json ai-review-out/coderabbit.json; do
+            if [ -s "$file" ]; then
+              echo "--- $file ($(wc -c < "$file") bytes) ---"
+              head -c 3000 "$file"
+              echo
+            else
+              echo "--- $file: 비어 있거나 없음 ---"
+            fi
+          done
+
+      - name: 리뷰어 원본 출력 업로드
+        if: always() && steps.diff.outputs.empty == 'false'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-review-raw
+          path: ai-review-out/
+          retention-days: 7
+          if-no-files-found: warn
+
+      # diff가 비어 리뷰를 건너뛴 실행에서도 돌려야 지난 지적이 남아 있지 않다.
+      # 그 경우엔 --only-existing 으로 기존 코멘트만 정리하고 새로 달지는 않는다.
+      - name: 리뷰 코멘트 작성
+        id: post
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          args=()
+          if [ "${{ steps.diff.outputs.empty }}" = "true" ]; then
+            args+=(--only-existing)
+          fi
+          node scripts/ai-review/post-review.mjs "${args[@]}" \
+            --repo "${{ github.repository }}" \
+            --pr "${{ github.event.pull_request.number }}" \
+            --sha "${{ github.event.pull_request.head.sha }}" \
+            --status "codex=${{ steps.codex.outcome }},coderabbit=${{ steps.coderabbit.outcome }}" \
+            codex=ai-review-out/codex.json \
+            coderabbit=ai-review-out/coderabbit.json
+
+      # 통합 코멘트가 올라간 뒤에만 접는다. 순서가 뒤바뀌면 리뷰가 사라진 것처럼 보인다.
+      # 수확이 실패해도 접는다. 실패 사유는 통합 코멘트에 실려 있고, 남겨두면
+      # 안내 코멘트가 PR에 그대로 쌓여 "코멘트 하나" 가 깨진다.
+      # 목록 파일이 없거나 비면 hide-comments 가 알아서 넘어간다.
+      - name: 원본 코멘트 접기
+        if: steps.post.outcome == 'success'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          node scripts/ai-review/hide-comments.mjs ai-review-out/codex-node-ids.txt
+          node scripts/ai-review/hide-comments.mjs ai-review-out/coderabbit-node-ids.txt
