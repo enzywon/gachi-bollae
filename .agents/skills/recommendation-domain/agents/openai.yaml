@@ -1,0 +1,4 @@
+interface:
+  display_name: "Recommendation Domain"
+  short_description: "상황·취향 기반 추천 규칙과 랭킹 설계"
+  default_prompt: "Use $recommendation-domain to design this recommendation rule change."

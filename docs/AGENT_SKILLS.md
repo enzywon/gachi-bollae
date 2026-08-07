@@ -19,6 +19,13 @@
 
 Playwright skill의 wrapper는 실제 브라우저 작업을 요청했을 때 `npx`를 통해 `@playwright/cli`를 실행합니다. 외부 패키지 실행 승인은 일반 코드 변경과 분리해서 검토합니다.
 
+## 프로젝트 전용 도메인 skills
+
+- `recommendation-domain`: 상황·무드·취향 조건에서 어떤 콘텐츠를 왜 추천할지 결정하는 규칙과 랭킹
+- `data-platform`: Neon·Drizzle 스키마와 마이그레이션, 소유자 키 기반 접근 규칙, 환경 변수와 Vercel 구성
+
+도메인 skill은 각자의 판단만 담당합니다. `recommendation-domain`은 무엇을 왜 추천할지, `data-platform`은 그 데이터가 어디에 있고 누가 읽을 수 있는지를 정하고, 화면 구조와 스타일은 UI skill에 맡깁니다.
+
 ## 프로젝트 전용 리뷰 skills
 
 - `pr-reviewer`: correctness와 회귀 중심 PR 리뷰
