@@ -13,6 +13,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 
 const POLL_INTERVAL_MS = 15000;
 
@@ -99,7 +100,7 @@ function parseCodeRabbit(body) {
   return { severity, title, detail: rest.trim(), suggestion: extractSuggestion(body) };
 }
 
-const SOURCES = {
+export const SOURCES = {
   codex: {
     bot: 'chatgpt-codex-connector[bot]',
     parse: parseCodex,
@@ -271,18 +272,30 @@ function findNoiseCommentIds(repo, pr, source) {
     .filter(Boolean);
 }
 
+// 봇이 남긴 리뷰 코멘트 중 이번 라운드의 지적으로 볼 것만 고른다.
+//
+// 코멘트의 commit_id 는 믿을 수 없다. GitHub은 코멘트가 붙은 줄이 살아 있으면 그 값을
+// 최신 커밋으로 옮겨 주기 때문에, 지난 커밋에서 이미 해결한 지적이 이번 라운드 결과인
+// 척 계속 다시 실린다. 취소된 실행이 뒤늦게 남긴 코멘트도 같은 경로로 섞여 든다.
+// 그래서 소속 리뷰(pull_request_review_id)로 라운드를 가른다. 리뷰의 commit_id 는
+// 고정이라 나중에 바뀌지 않는다.
+// 리뷰에 속하지 않은 단독 코멘트만 예전처럼 시각과 SHA로 거른다.
+//
+// 내용 없는 회신은 지적이 아니다. CodeRabbit 은 다른 봇이 단 인라인 코멘트마다
+// "Skipped: comment is from another GitHub bot" 을 회신으로 붙이는데, 이것도 리뷰
+// 객체에 속해 라운드 필터를 그냥 통과한다. 파서가 제목도 본문도 뽑지 못해
+// 통합 코멘트에 위치만 있는 빈 항목으로 실린다. 접기 대상(nodeIds)에는 그대로 둔다.
+export function selectRoundComments(comments, source, sha, sinceIso, reviewIds) {
+  return comments
+    .filter((c) => !source.noise?.test(c.body ?? ''))
+    .filter((c) => (c.pull_request_review_id
+      ? reviewIds.has(c.pull_request_review_id)
+      : (!sinceIso || c.created_at >= sinceIso) && (c.commit_id === sha || c.original_commit_id === sha)));
+}
+
 function harvest(repo, pr, sha, source, sinceIso, reviewIds) {
   const mine = fetchReviewComments(repo, pr).filter((c) => c.login === source.bot);
-
-  // 코멘트의 commit_id 는 믿을 수 없다. GitHub은 코멘트가 붙은 줄이 살아 있으면 그 값을
-  // 최신 커밋으로 옮겨 주기 때문에, 지난 커밋에서 이미 해결한 지적이 이번 라운드 결과인
-  // 척 계속 다시 실린다. 취소된 실행이 뒤늦게 남긴 코멘트도 같은 경로로 섞여 든다.
-  // 그래서 소속 리뷰(pull_request_review_id)로 라운드를 가른다. 리뷰의 commit_id 는
-  // 고정이라 나중에 바뀌지 않는다.
-  // 리뷰에 속하지 않은 단독 코멘트만 예전처럼 시각과 SHA로 거른다.
-  const comments = mine.filter((c) => (c.pull_request_review_id
-    ? reviewIds.has(c.pull_request_review_id)
-    : (!sinceIso || c.created_at >= sinceIso) && (c.commit_id === sha || c.original_commit_id === sha)));
+  const comments = selectRoundComments(mine, source, sha, sinceIso, reviewIds);
 
   const findings = comments.map((c) => {
     const parsed = source.parse(c.body ?? '');
@@ -392,4 +405,7 @@ async function main() {
   if (opts['ids-out']) writeFileSync(opts['ids-out'], [...nodeIds, ...noiseIds].join('\n'), 'utf8');
 }
 
-main();
+// 테스트가 순수 함수만 import 할 수 있도록, CLI로 직접 실행할 때만 돈다.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main();
+}
