@@ -11,6 +11,9 @@ permissions:
   pull-requests: write
   # PR 대화 코멘트는 이슈 코멘트로 취급된다. 요청 코멘트를 달고 지우는 데 필요하다.
   issues: write
+  # CodeRabbit 완료 판정은 커밋 상태 조회에 기댄다. 공개 저장소라 지금은 이 권한이
+  # 없어도 읽히지만, 비공개로 돌리는 순간 조회가 막히고 조용히 타임아웃까지 기다린다.
+  statuses: read
 
 concurrency:
   group: ai-review-${{ github.event.pull_request.number }}
