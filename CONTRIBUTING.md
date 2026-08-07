@@ -78,7 +78,7 @@ git commit -m "feat(recommendation): 추천 기록 저장 기능 추가"
 npm run pr:open
 ```
 
-현재 브랜치를 원격에 푸시하고 `main`을 대상으로 draft PR을 만듭니다.
+현재 브랜치를 원격에 푸시하고 `main`을 대상으로 draft PR을 만듭니다. 제목은 브랜치의 첫 커밋 제목을 쓰고, 본문은 `.github/pull_request_template.md`가 그대로 들어갑니다. PR을 연 뒤 본문 항목을 직접 채워 주세요.
 
 ### 4. CI와 리뷰 확인하기
 
