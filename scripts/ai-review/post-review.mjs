@@ -319,6 +319,15 @@ function renderFinding(finding, repo, sha) {
   return lines.join('\n');
 }
 
+// 리뷰가 끝까지 가서 결과를 읽어낸 소스인지 본다. 건너뛰었거나 실패했거나 출력이
+// 없으면 지적이 없는 게 아니라 알 수 없는 것이다.
+function isSettled(source, statuses) {
+  const outcome = statuses[source.name];
+  if (outcome === 'skipped') return false;
+  if (outcome && outcome !== 'success') return false;
+  return source.parsed;
+}
+
 function renderStatusLine(sources, statuses) {
   return sources
     .map(({ name, findings, parsed }) => {
@@ -352,8 +361,21 @@ function renderBody({ sources, statuses, findings, repo, sha }) {
     }
   }
 
+  // 수확이 실패해도 findings 는 빈 배열이다. 그대로 "없습니다" 라고 쓰면 헤더의 실패
+  // 표시와 정반대 신호를 준다. 확인한 범위가 어디까지인지 밝힌다.
   if (findings.length === 0) {
-    parts.push('지적 사항이 없습니다.');
+    const missing = sources
+      .filter((source) => !isSettled(source, statuses))
+      .map((source) => SOURCE_LABEL[source.name] ?? source.name);
+    if (missing.length === 0) {
+      parts.push('지적 사항이 없습니다.');
+    } else if (missing.length === sources.length) {
+      parts.push('리뷰 결과를 받지 못해 지적 사항이 있는지 확인하지 못했습니다.');
+    } else {
+      parts.push(
+        `끝난 리뷰에는 지적 사항이 없습니다. ${missing.join(', ')} 결과를 받지 못해 나머지는 확인하지 못했습니다.`,
+      );
+    }
     return parts.join('\n');
   }
 
