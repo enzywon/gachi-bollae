@@ -9,7 +9,14 @@
 //   node scripts/ai-review/harvest.mjs --source codex \
 //     --repo owner/name --pr 12 --sha <head-sha> \
 //     --trigger-comment-id 123 --timeout 600 \
-//     --out ai-review-out/codex.json --ids-out ai-review-out/codex-node-ids.txt
+//     --out ai-review-out/codex.json --ids-out ai-review-out/codex-node-ids.txt \
+//     --delete-ids-out ai-review-out/codex-delete-ids.txt \
+//     --issue-delete-ids-out ai-review-out/codex-issue-delete-ids.txt
+//
+// 원본은 지울 수 있는 것과 없는 것으로 갈라 치운다. 삭제 API 가 있는 인라인
+// 코멘트(--delete-ids-out)와 잡음 코멘트(--issue-delete-ids-out)는 지우고, 삭제 API 가
+// 없는 리뷰 객체만 접는다(--ids-out). 접기로 때우면 Files changed 탭과 대화 목록에
+// 회색 줄이 남아 "코멘트 하나" 가 깨진다.
 
 import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
@@ -138,7 +145,7 @@ export const SOURCES = {
 function parseArgs(argv) {
   const opts = {
     source: '', repo: '', pr: '', sha: '', 'trigger-comment-id': '', timeout: '600',
-    out: '', 'ids-out': '',
+    out: '', 'ids-out': '', 'delete-ids-out': '', 'issue-delete-ids-out': '',
   };
   for (let i = 0; i < argv.length; i += 1) {
     const key = argv[i].replace(/^--/, '');
@@ -153,15 +160,32 @@ function parseArgs(argv) {
 function fetchReviews(repo, pr) {
   return ghJsonLines([
     'api', '--paginate', `repos/${repo}/pulls/${pr}/reviews`,
-    '--jq', '.[] | {id, login: .user.login, commit_id, submitted_at}',
+    '--jq', '.[] | {id, node_id, login: .user.login, commit_id, submitted_at}',
   ]);
 }
 
+// 인라인 코멘트는 삭제하므로 REST 의 숫자 id 가 필요하다. node_id 로는 지울 수 없다.
 function fetchReviewComments(repo, pr) {
   return ghJsonLines([
     'api', '--paginate', `repos/${repo}/pulls/${pr}/comments`,
-    '--jq', '.[] | {node_id, login: .user.login, created_at, pull_request_review_id, commit_id, original_commit_id, path, line, start_line, original_line, body}',
+    '--jq', '.[] | {id, node_id, login: .user.login, created_at, pull_request_review_id, commit_id, original_commit_id, path, line, start_line, original_line, body}',
   ]);
+}
+
+// 리뷰 이벤트 본문. 두 앱 모두 인라인과 별개로 요약 본문을 남긴다
+// (CodeRabbit "Actionable comments posted: N", Codex "💡 Codex Review").
+// 벤더 설정으로는 끌 수 없고 삭제 API 도 없다. 다만 PullRequestReview 는 GraphQL
+// Minimizable 에 속하므로 인라인·잡음 코멘트와 같은 방식으로 접을 수 있다.
+// 이번 라운드 것만 접으면 취소된 실행이 남긴 이전 리뷰가 펼쳐진 채 남으므로 전부 접는다.
+function findReviewNodeIds(repo, pr, source) {
+  try {
+    return fetchReviews(repo, pr)
+      .filter((r) => r.login === source.bot)
+      .map((r) => r.node_id)
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
 }
 
 // 이번 요청에 대한 리뷰들의 id. SHA만 보면 안 된다. 같은 SHA로 workflow를 재실행하거나
@@ -215,7 +239,7 @@ function fetchBotIssueComments(repo, pr, bot, sinceIso) {
   try {
     return ghJsonLines([
       'api', '--paginate', `repos/${repo}/issues/${pr}/comments`,
-      '--jq', '.[] | {node_id, login: .user.login, created_at, body}',
+      '--jq', '.[] | {id, node_id, login: .user.login, created_at, body}',
     ]).filter((c) => c.login === bot && (!sinceIso || c.created_at >= sinceIso));
   } catch {
     return [];
@@ -260,15 +284,18 @@ function findBlockingReply(repo, pr, source, sinceIso) {
     .filter((c) => source.blocked.test(c.body ?? '')).at(-1) ?? null;
 }
 
-// 접수 회신은 내용이 없고 "리뷰 불가" 안내문은 사유가 통합 코멘트에 실리므로 둘 다 접는다.
-// 지난 실행에서 쌓인 것까지 함께 접어야 PR에 코멘트가 하나만 남는다.
-function findNoiseCommentIds(repo, pr, source) {
+// 접수 회신은 내용이 없고 "리뷰 불가" 안내문은 사유가 통합 코멘트에 실리므로 둘 다 지운다.
+// 접으면 "This comment was marked as outdated." 회색 줄이 대화에 남는데, 남길 내용이
+// 없는 코멘트라 그 줄 자체가 잡음이다. 일반 코멘트라 삭제 API 가 있어 지울 수 있다.
+// 지난 실행에서 쌓인 것까지 함께 지워야 PR에 코멘트가 하나만 남는다.
+// 삭제는 REST 의 숫자 id 를 쓴다. node_id 로는 지울 수 없다.
+function findNoiseDeleteIds(repo, pr, source) {
   return fetchBotIssueComments(repo, pr, source.bot, '')
     .filter((c) => {
       const body = c.body ?? '';
       return Boolean(source.noise?.test(body) || source.blocked?.test(body));
     })
-    .map((c) => c.node_id)
+    .map((c) => c.id)
     .filter(Boolean);
 }
 
@@ -284,7 +311,7 @@ function findNoiseCommentIds(repo, pr, source) {
 // 내용 없는 회신은 지적이 아니다. CodeRabbit 은 다른 봇이 단 인라인 코멘트마다
 // "Skipped: comment is from another GitHub bot" 을 회신으로 붙이는데, 이것도 리뷰
 // 객체에 속해 라운드 필터를 그냥 통과한다. 파서가 제목도 본문도 뽑지 못해
-// 통합 코멘트에 위치만 있는 빈 항목으로 실린다. 접기 대상(nodeIds)에는 그대로 둔다.
+// 통합 코멘트에 위치만 있는 빈 항목으로 실린다. 삭제 대상(deleteIds)에는 그대로 둔다.
 export function selectRoundComments(comments, source, sha, sinceIso, reviewIds) {
   return comments
     .filter((c) => !source.noise?.test(c.body ?? ''))
@@ -311,10 +338,10 @@ function harvest(repo, pr, sha, source, sinceIso, reviewIds) {
     };
   });
 
-  // 접는 것은 이번 라운드 것만이 아니라 봇이 남긴 모든 리뷰 코멘트다. 취소된 실행이
+  // 치우는 것은 이번 라운드 것만이 아니라 봇이 남긴 모든 리뷰 코멘트다. 취소된 실행이
   // 뒤늦게 남긴 이전 커밋 코멘트는 어느 라운드의 수확에도 안 잡혀 영영 펼쳐진 채로
-  // 남는다. 통합 코멘트가 현재 지적을 모두 담고 있으므로 원본은 접어도 된다.
-  return { findings, nodeIds: mine.map((c) => c.node_id).filter(Boolean) };
+  // 남는다. 통합 코멘트가 지적 원문과 코드 위치 링크를 담고 있으므로 원본은 지워도 된다.
+  return { findings, deleteIds: mine.map((c) => c.id).filter(Boolean) };
 }
 
 async function main() {
@@ -386,23 +413,28 @@ async function main() {
     const note = blockedNote || '리뷰를 기다리다 시간이 초과됐습니다.';
     if (!blockedNote) console.error(`${opts.source} ${note}`);
     console.error(`${opts.source}: 이번 실행에서는 건너뜁니다.`);
-    // 실패해도 안내 코멘트는 접는다. 사유는 note 로 통합 코멘트에 실리므로
+    // 실패해도 안내 코멘트는 지운다. 사유는 note 로 통합 코멘트에 실리므로
     // PR 대화에 원본을 남겨둘 이유가 없다.
-    const noiseIds = findNoiseCommentIds(opts.repo, opts.pr, source);
+    // 인라인 삭제 목록은 비워 둔다. 수확이 실패한 라운드에는 지적이 통합 코멘트에
+    // 실리지 않아, 원본까지 지우면 리뷰가 통째로 사라진다.
+    const noiseIds = findNoiseDeleteIds(opts.repo, opts.pr, source);
     if (opts.out) writeFileSync(opts.out, JSON.stringify({ summary: '', findings: [], note }), 'utf8');
-    if (opts['ids-out']) writeFileSync(opts['ids-out'], noiseIds.join('\n'), 'utf8');
+    if (opts['issue-delete-ids-out']) writeFileSync(opts['issue-delete-ids-out'], noiseIds.join('\n'), 'utf8');
     process.exit(1);
   }
 
   // 수확 직전에 다시 읽는다. 상태로 완료를 안 경우 리뷰 id 를 아직 모르고,
   // grace 를 기다리는 사이에 리뷰가 올라왔을 수도 있다.
   const reviewIds = freshReviewIds(opts.repo, opts.pr, source, opts.sha, roundStart);
-  const { findings, nodeIds } = harvest(opts.repo, opts.pr, opts.sha, source, roundStart, reviewIds);
-  const noiseIds = findNoiseCommentIds(opts.repo, opts.pr, source);
-  console.log(`${opts.source} 수확 완료 (${reason}): ${findings.length}건, 접을 코멘트 ${nodeIds.length + noiseIds.length}건`);
+  const { findings, deleteIds } = harvest(opts.repo, opts.pr, opts.sha, source, roundStart, reviewIds);
+  const noiseIds = findNoiseDeleteIds(opts.repo, opts.pr, source);
+  const hideIds = findReviewNodeIds(opts.repo, opts.pr, source);
+  console.log(`${opts.source} 수확 완료 (${reason}): ${findings.length}건, 지울 코멘트 ${deleteIds.length + noiseIds.length}건, 접을 리뷰 본문 ${hideIds.length}건`);
 
   if (opts.out) writeFileSync(opts.out, JSON.stringify({ summary: '', findings }, null, 2), 'utf8');
-  if (opts['ids-out']) writeFileSync(opts['ids-out'], [...nodeIds, ...noiseIds].join('\n'), 'utf8');
+  if (opts['ids-out']) writeFileSync(opts['ids-out'], hideIds.join('\n'), 'utf8');
+  if (opts['delete-ids-out']) writeFileSync(opts['delete-ids-out'], deleteIds.join('\n'), 'utf8');
+  if (opts['issue-delete-ids-out']) writeFileSync(opts['issue-delete-ids-out'], noiseIds.join('\n'), 'utf8');
 }
 
 // 테스트가 순수 함수만 import 할 수 있도록, CLI로 직접 실행할 때만 돈다.
