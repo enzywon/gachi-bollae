@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -19,6 +19,18 @@ export const metadata: Metadata = {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
   },
+};
+
+/**
+ * `viewportFit: "cover"`가 있어야 env(safe-area-inset-*)이 0이 아닌 값을 갖는다.
+ * 시트 하단 버튼이 홈 인디케이터에 가리지 않도록 하는 전제 조건이다.
+ */
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  interactiveWidget: "resizes-content",
+  themeColor: "#0d0b18",
 };
 
 export default function RootLayout({

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { kstDefaultRecordDate, kstToday } from "../_lib/date";
 import {
   MAX_COMMENT_LENGTH,
@@ -77,6 +77,37 @@ export default function RatingSheet({
   const [values, setValues] = useState<RatingSheetValues>(() => ({ ...defaultValues(), ...initial }));
   const today = useMemo(() => kstToday(), []);
   const seasonAllowed = allowsSeason(format);
+  const sheetRef = useRef<HTMLElement>(null);
+
+  /**
+   * 시트가 열려 있는 동안 뒤 페이지가 함께 스크롤되지 않게 한다.
+   * iOS 사파리는 body의 overflow: hidden을 무시하므로 위치를 고정하고 스크롤 위치를 되돌린다.
+   */
+  useEffect(() => {
+    const scrollY = window.scrollY;
+    const { style } = document.body;
+    const restore = { position: style.position, top: style.top, width: style.width };
+
+    style.position = "fixed";
+    style.top = `-${scrollY}px`;
+    style.width = "100%";
+
+    return () => {
+      style.position = restore.position;
+      style.top = restore.top;
+      style.width = restore.width;
+      window.scrollTo(0, scrollY);
+    };
+  }, []);
+
+  /** 시트를 열면 초점을 옮기고 닫을 때 원래 자리로 돌려준다. */
+  useEffect(() => {
+    const opener = document.activeElement;
+    sheetRef.current?.focus();
+    return () => {
+      if (opener instanceof HTMLElement) opener.focus();
+    };
+  }, []);
 
   /**
    * 저장 중에는 닫기를 무시한다.
@@ -119,6 +150,8 @@ export default function RatingSheet({
   return (
     <div className="sheet-backdrop" role="presentation" onClick={requestClose}>
       <section
+        ref={sheetRef}
+        tabIndex={-1}
         className="rating-sheet"
         role="dialog"
         aria-modal="true"
