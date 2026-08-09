@@ -171,6 +171,10 @@ function toFinding(raw, source) {
     title,
     detail: detail && detail !== title ? detail : '',
     suggestion: readSuggestion(raw),
+    // 이전 커밋에서 온 지적. 수확이 자기 커밋 기준으로 링크를 걸 수 있도록 SHA를 함께
+    // 넘긴다. 없으면 아래에서 이번 실행의 HEAD 로 떨어진다.
+    stale: raw.stale === true,
+    sha: firstString(raw, ['sha']),
   };
 }
 
@@ -249,7 +253,10 @@ function dedupe(findings) {
   let serial = 0;
 
   for (const finding of findings) {
-    const key = `${finding.file}:${finding.line}:${finding.title.toLowerCase()}`;
+    // 이전 커밋 지적은 같은 자리에 같은 제목이어도 이번 지적과 묶지 않는다. 묶으면
+    // 한쪽 배지에 흡수되어 어느 커밋 것인지 알 수 없게 된다.
+    const scope = finding.stale ? `stale:${finding.sha}` : 'fresh';
+    const key = `${scope}:${finding.file}:${finding.line}:${finding.title.toLowerCase()}`;
     const existing = byKey.get(key);
     if (!existing) {
       byKey.set(key, { ...finding, sources: [finding.source] });
@@ -289,8 +296,11 @@ function locationMarkdown(finding, repo, sha) {
   if (!finding.file) return '';
   const anchor = finding.line > 0 ? `#L${finding.line}` : '';
   const label = finding.line > 0 ? `${finding.file}:${finding.line}` : finding.file;
-  if (!repo || !sha) return `\`${label}\``;
-  return `[\`${label}\`](https://github.com/${repo}/blob/${sha}/${encodePath(finding.file)}${anchor})`;
+  // 지적이 자기 커밋을 들고 있으면 그걸 쓴다. 이전 커밋 지적을 HEAD 로 링크하면
+  // 그 사이 줄이 밀려 엉뚱한 코드를 짚는다.
+  const target = finding.sha || sha;
+  if (!repo || !target) return `\`${label}\``;
+  return `[\`${label}\`](https://github.com/${repo}/blob/${target}/${encodePath(finding.file)}${anchor})`;
 }
 
 // 제안 코드 안에 백틱이 들어 있어도 깨지지 않도록 울타리 길이를 늘려 잡는다.
@@ -336,7 +346,9 @@ function renderStatusLine(sources, statuses) {
       if (outcome === 'skipped') return `${label} ⏭️ 건너뜀`;
       if (outcome && outcome !== 'success') return `${label} ⚠️ 실패`;
       if (!parsed) return `${label} ⚠️ 출력 없음`;
-      return `${label} ✅ ${findings.length}건`;
+      // 이번 커밋 지적만 센다. 이전 커밋 지적은 아래 별도 섹션에 실리므로 여기 더하면
+      // 방금 리뷰에서 나온 건수를 부풀린다.
+      return `${label} ✅ ${findings.filter((f) => !f.stale).length}건`;
     })
     .join(' · ');
 }
@@ -361,9 +373,12 @@ function renderBody({ sources, statuses, findings, repo, sha }) {
     }
   }
 
+  const fresh = findings.filter((f) => !f.stale);
+  const stale = findings.filter((f) => f.stale);
+
   // 수확이 실패해도 findings 는 빈 배열이다. 그대로 "없습니다" 라고 쓰면 헤더의 실패
   // 표시와 정반대 신호를 준다. 확인한 범위가 어디까지인지 밝힌다.
-  if (findings.length === 0) {
+  if (fresh.length === 0 && stale.length === 0) {
     const missing = sources
       .filter((source) => !isSettled(source, statuses))
       .map((source) => SOURCE_LABEL[source.name] ?? source.name);
@@ -379,11 +394,32 @@ function renderBody({ sources, statuses, findings, repo, sha }) {
     return parts.join('\n');
   }
 
+  if (fresh.length === 0) {
+    parts.push('이번 커밋에는 지적 사항이 없습니다.', '');
+  }
+
   for (const severity of SEVERITIES) {
-    const group = findings.filter((f) => f.severity === severity);
+    const group = fresh.filter((f) => f.severity === severity);
     if (group.length === 0) continue;
     parts.push(`### ${SEVERITY_LABEL[severity]} (${group.length})`, '');
     for (const finding of group) parts.push(renderFinding(finding, repo, sha), '');
+  }
+
+  // 이전 커밋 지적. 리뷰 도중 push 가 나서 실행이 취소되면 앱은 그 사실을 모르고
+  // 이전 커밋에 코멘트를 마저 단다. 원본은 지워지므로 여기 싣지 않으면 아무 데도
+  // 안 남는다. 이미 고쳐진 지적일 수 있어 접어 두고 이번 지적과 섞지 않는다.
+  if (stale.length > 0) {
+    parts.push(
+      `<details><summary>🕒 지난 커밋에서 온 지적 (${stale.length}) — 이미 반영됐을 수 있습니다</summary>`,
+      '',
+    );
+    for (const severity of SEVERITIES) {
+      const group = stale.filter((f) => f.severity === severity);
+      if (group.length === 0) continue;
+      parts.push(`**${SEVERITY_LABEL[severity]}** (${group.length})`, '');
+      for (const finding of group) parts.push(renderFinding(finding, repo, sha), '');
+    }
+    parts.push('</details>', '');
   }
 
   return parts.join('\n');

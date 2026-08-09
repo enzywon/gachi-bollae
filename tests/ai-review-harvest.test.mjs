@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { SOURCES, selectRoundComments } from "../scripts/ai-review/harvest.mjs";
+import { SOURCES, selectRoundComments, selectStaleComments } from "../scripts/ai-review/harvest.mjs";
 
 /**
  * 수확기가 이번 라운드의 지적만 골라내는지 확인한다.
@@ -129,4 +129,32 @@ test("리뷰에 속하지 않은 단독 코멘트는 시각과 SHA로 거른다"
     selected.map((c) => c.node_id),
     ["solo-1"],
   );
+});
+
+/**
+ * 이번 라운드에 안 잡힌 코멘트는 지워지기 전에 통합 코멘트로 옮겨져야 한다.
+ * 접기였을 때는 펼쳐 보면 그만이었지만 삭제는 되돌릴 수 없다.
+ */
+test("취소된 실행이 남긴 이전 커밋 지적을 옮길 대상으로 고른다", () => {
+  const all = [
+    comment({ id: 1, node_id: "old-1", pull_request_review_id: 99, body: REAL_FINDING }),
+    comment({ id: 2, node_id: "new-1", pull_request_review_id: 100, body: REAL_FINDING }),
+  ];
+  const round = selectRoundComments(all, SOURCES.coderabbit, SHA, SINCE, new Set([100]));
+  const stale = selectStaleComments(all, round, SOURCES.coderabbit);
+
+  assert.deepEqual(round.map((c) => c.node_id), ["new-1"]);
+  assert.deepEqual(stale.map((c) => c.node_id), ["old-1"]);
+});
+
+test("옮길 내용이 없는 회신은 이전 커밋 지적으로도 세지 않는다", () => {
+  const all = [
+    comment({ id: 1, node_id: "skip-1", pull_request_review_id: 99, body: SKIPPED_REPLY }),
+    comment({ id: 2, node_id: "old-1", pull_request_review_id: 99, body: REAL_FINDING }),
+  ];
+  const round = selectRoundComments(all, SOURCES.coderabbit, SHA, SINCE, new Set([100]));
+  const stale = selectStaleComments(all, round, SOURCES.coderabbit);
+
+  assert.deepEqual(round, []);
+  assert.deepEqual(stale.map((c) => c.node_id), ["old-1"]);
 });

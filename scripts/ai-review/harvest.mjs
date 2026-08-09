@@ -320,28 +320,58 @@ export function selectRoundComments(comments, source, sha, sinceIso, reviewIds) 
       : (!sinceIso || c.created_at >= sinceIso) && (c.commit_id === sha || c.original_commit_id === sha)));
 }
 
+// 봇이 남겼지만 이번 라운드 수확에 안 잡힌 코멘트. 원본을 지우는 이상 이것도 통합
+// 코멘트로 옮겨야 정보가 남는다. 옮길 내용이 없는 잡음 회신만 뺀다.
+export function selectStaleComments(mine, roundComments, source) {
+  const round = new Set(roundComments.map((c) => c.id));
+  return mine
+    .filter((c) => !round.has(c.id))
+    .filter((c) => !source.noise?.test(c.body ?? ''));
+}
+
+function toFinding(comment, source) {
+  const parsed = source.parse(comment.body ?? '');
+  // 제목을 못 뽑았으면 첫 줄을 제목으로 쓰되 나머지 줄은 본문에 남긴다.
+  const [firstLine, ...restLines] = parsed.detail.split('\n');
+  return {
+    severity: parsed.severity,
+    file: comment.path ?? '',
+    line: comment.line ?? comment.original_line ?? comment.start_line ?? 0,
+    title: parsed.title || (firstLine ?? '').slice(0, 100),
+    detail: parsed.title ? parsed.detail : restLines.join('\n').trim(),
+    suggestion: parsed.suggestion,
+  };
+}
+
 function harvest(repo, pr, sha, source, sinceIso, reviewIds) {
   const mine = fetchReviewComments(repo, pr).filter((c) => c.login === source.bot);
   const comments = selectRoundComments(mine, source, sha, sinceIso, reviewIds);
+  const findings = comments.map((c) => toFinding(c, source));
 
-  const findings = comments.map((c) => {
-    const parsed = source.parse(c.body ?? '');
-    // 제목을 못 뽑았으면 첫 줄을 제목으로 쓰되 나머지 줄은 본문에 남긴다.
-    const [firstLine, ...restLines] = parsed.detail.split('\n');
-    return {
-      severity: parsed.severity,
-      file: c.path ?? '',
-      line: c.line ?? c.original_line ?? c.start_line ?? 0,
-      title: parsed.title || (firstLine ?? '').slice(0, 100),
-      detail: parsed.title ? parsed.detail : restLines.join('\n').trim(),
-      suggestion: parsed.suggestion,
-    };
-  });
+  // 이번 라운드에 안 잡힌 봇 코멘트도 있다. 요청을 올린 뒤 push 로 실행이 취소되면
+  // 앱은 그 사실을 모르고 이전 커밋에 코멘트를 마저 단다. 그 코멘트는 소속 리뷰의
+  // commit_id 가 이전 SHA 라 어느 라운드의 수확에도 안 잡힌다.
+  //
+  // 그래도 지워야 한다. 안 지우면 취소된 실행의 잔재가 PR에 그대로 쌓인다. 다만
+  // 지우기만 하면 어느 통합 코멘트에도 실린 적 없는 지적이 조용히 사라진다. 접기였을
+  // 때는 펼쳐 보면 됐지만 삭제는 되돌릴 수 없다. 그래서 통합 코멘트로 옮겨 싣고 지운다.
+  //
+  // 잡음 회신은 옮길 내용이 없으므로 뺀다. selectRoundComments 가 먼저 걸러내므로
+  // 여기서 한 번 더 걸러야 한다.
+  const stale = selectStaleComments(mine, comments, source);
 
-  // 치우는 것은 이번 라운드 것만이 아니라 봇이 남긴 모든 리뷰 코멘트다. 취소된 실행이
-  // 뒤늦게 남긴 이전 커밋 코멘트는 어느 라운드의 수확에도 안 잡혀 영영 펼쳐진 채로
-  // 남는다. 통합 코멘트가 지적 원문과 코드 위치 링크를 담고 있으므로 원본은 지워도 된다.
-  return { findings, deleteIds: mine.map((c) => c.id).filter(Boolean) };
+  // 이전 커밋의 지적이라 링크도 그 커밋을 가리켜야 한다. 현재 HEAD 로 링크하면
+  // 줄이 밀려 엉뚱한 코드를 짚는다.
+  const staleFindings = stale.map((c) => ({
+    ...toFinding(c, source),
+    stale: true,
+    sha: c.original_commit_id || c.commit_id || '',
+  }));
+
+  return {
+    findings: [...findings, ...staleFindings],
+    deleteIds: mine.map((c) => c.id).filter(Boolean),
+  };
 }
 
 async function main() {
@@ -429,7 +459,9 @@ async function main() {
   const { findings, deleteIds } = harvest(opts.repo, opts.pr, opts.sha, source, roundStart, reviewIds);
   const noiseIds = findNoiseDeleteIds(opts.repo, opts.pr, source);
   const hideIds = findReviewNodeIds(opts.repo, opts.pr, source);
-  console.log(`${opts.source} 수확 완료 (${reason}): ${findings.length}건, 지울 코멘트 ${deleteIds.length + noiseIds.length}건, 접을 리뷰 본문 ${hideIds.length}건`);
+  const staleCount = findings.filter((f) => f.stale).length;
+  const staleNote = staleCount > 0 ? ` (이전 커밋 ${staleCount}건 포함)` : '';
+  console.log(`${opts.source} 수확 완료 (${reason}): ${findings.length}건${staleNote}, 지울 코멘트 ${deleteIds.length + noiseIds.length}건, 접을 리뷰 본문 ${hideIds.length}건`);
 
   if (opts.out) writeFileSync(opts.out, JSON.stringify({ summary: '', findings }, null, 2), 'utf8');
   if (opts['ids-out']) writeFileSync(opts['ids-out'], hideIds.join('\n'), 'utf8');
