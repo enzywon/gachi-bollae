@@ -320,8 +320,10 @@ export function selectRoundComments(comments, source, sha, sinceIso, reviewIds) 
       : (!sinceIso || c.created_at >= sinceIso) && (c.commit_id === sha || c.original_commit_id === sha)));
 }
 
-// 봇이 남겼지만 이번 라운드 수확에 안 잡힌 코멘트. 원본을 지우는 이상 이것도 통합
-// 코멘트로 옮겨야 정보가 남는다. 옮길 내용이 없는 잡음 회신만 뺀다.
+// 봇이 남겼지만 이번 라운드 수확에 안 잡힌 코멘트. 취소된 실행이 이전 커밋에 뒤늦게
+// 단 것도, 같은 커밋에서 재실행하기 전 라운드가 남긴 것도 여기 들어온다. 원본을
+// 지우는 이상 둘 다 통합 코멘트로 옮겨야 정보가 남는다.
+// 옮길 내용이 없는 잡음 회신만 뺀다.
 export function selectStaleComments(mine, roundComments, source) {
   const round = new Set(roundComments.map((c) => c.id));
   return mine
@@ -350,7 +352,8 @@ function harvest(repo, pr, sha, source, sinceIso, reviewIds) {
 
   // 이번 라운드에 안 잡힌 봇 코멘트도 있다. 요청을 올린 뒤 push 로 실행이 취소되면
   // 앱은 그 사실을 모르고 이전 커밋에 코멘트를 마저 단다. 그 코멘트는 소속 리뷰의
-  // commit_id 가 이전 SHA 라 어느 라운드의 수확에도 안 잡힌다.
+  // commit_id 가 이전 SHA 라 어느 라운드의 수확에도 안 잡힌다. 같은 커밋에서
+  // 워크플로를 재실행한 경우에도 지난 라운드 코멘트가 같은 자리에 남는다.
   //
   // 그래도 지워야 한다. 안 지우면 취소된 실행의 잔재가 PR에 그대로 쌓인다. 다만
   // 지우기만 하면 어느 통합 코멘트에도 실린 적 없는 지적이 조용히 사라진다. 접기였을
@@ -360,8 +363,8 @@ function harvest(repo, pr, sha, source, sinceIso, reviewIds) {
   // 여기서 한 번 더 걸러야 한다.
   const stale = selectStaleComments(mine, comments, source);
 
-  // 이전 커밋의 지적이라 링크도 그 커밋을 가리켜야 한다. 현재 HEAD 로 링크하면
-  // 줄이 밀려 엉뚱한 코드를 짚는다.
+  // 링크는 그 코멘트가 달린 커밋을 가리켜야 한다. 이전 커밋 지적을 현재 HEAD 로
+  // 링크하면 줄이 밀려 엉뚱한 코드를 짚는다.
   const staleFindings = stale.map((c) => ({
     ...toFinding(c, source),
     stale: true,
@@ -460,7 +463,7 @@ async function main() {
   const noiseIds = findNoiseDeleteIds(opts.repo, opts.pr, source);
   const hideIds = findReviewNodeIds(opts.repo, opts.pr, source);
   const staleCount = findings.filter((f) => f.stale).length;
-  const staleNote = staleCount > 0 ? ` (이전 커밋 ${staleCount}건 포함)` : '';
+  const staleNote = staleCount > 0 ? ` (지난 실행 ${staleCount}건 포함)` : '';
   console.log(`${opts.source} 수확 완료 (${reason}): ${findings.length}건${staleNote}, 지울 코멘트 ${deleteIds.length + noiseIds.length}건, 접을 리뷰 본문 ${hideIds.length}건`);
 
   if (opts.out) writeFileSync(opts.out, JSON.stringify({ summary: '', findings }, null, 2), 'utf8');

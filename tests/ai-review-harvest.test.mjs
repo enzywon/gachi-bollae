@@ -135,7 +135,7 @@ test("리뷰에 속하지 않은 단독 코멘트는 시각과 SHA로 거른다"
  * 이번 라운드에 안 잡힌 코멘트는 지워지기 전에 통합 코멘트로 옮겨져야 한다.
  * 접기였을 때는 펼쳐 보면 그만이었지만 삭제는 되돌릴 수 없다.
  */
-test("취소된 실행이 남긴 이전 커밋 지적을 옮길 대상으로 고른다", () => {
+test("취소된 실행이 이전 커밋에 남긴 지적을 옮길 대상으로 고른다", () => {
   const all = [
     comment({ id: 1, node_id: "old-1", pull_request_review_id: 99, body: REAL_FINDING }),
     comment({ id: 2, node_id: "new-1", pull_request_review_id: 100, body: REAL_FINDING }),
@@ -147,7 +147,7 @@ test("취소된 실행이 남긴 이전 커밋 지적을 옮길 대상으로 고
   assert.deepEqual(stale.map((c) => c.node_id), ["old-1"]);
 });
 
-test("옮길 내용이 없는 회신은 이전 커밋 지적으로도 세지 않는다", () => {
+test("옮길 내용이 없는 회신은 지난 실행 지적으로도 세지 않는다", () => {
   const all = [
     comment({ id: 1, node_id: "skip-1", pull_request_review_id: 99, body: SKIPPED_REPLY }),
     comment({ id: 2, node_id: "old-1", pull_request_review_id: 99, body: REAL_FINDING }),
@@ -157,4 +157,20 @@ test("옮길 내용이 없는 회신은 이전 커밋 지적으로도 세지 않
 
   assert.deepEqual(round, []);
   assert.deepEqual(stale.map((c) => c.node_id), ["old-1"]);
+});
+
+/**
+ * 같은 커밋에서 워크플로를 재실행하면 지난 라운드 코멘트가 그대로 남는다. SHA 가
+ * 같아도 이번 라운드 수확에는 안 잡히므로, 옮길 대상에 들어와야 지워질 때 사라지지 않는다.
+ */
+test("같은 커밋의 지난 라운드 코멘트도 옮길 대상으로 고른다", () => {
+  const all = [
+    comment({ id: 1, node_id: "run-1", pull_request_review_id: 100, body: REAL_FINDING }),
+    comment({ id: 2, node_id: "run-2", pull_request_review_id: 101, body: REAL_FINDING }),
+  ];
+  const round = selectRoundComments(all, SOURCES.coderabbit, SHA, SINCE, new Set([101]));
+  const stale = selectStaleComments(all, round, SOURCES.coderabbit);
+
+  assert.deepEqual(round.map((c) => c.node_id), ["run-2"]);
+  assert.deepEqual(stale.map((c) => c.node_id), ["run-1"]);
 });

@@ -171,7 +171,7 @@ function toFinding(raw, source) {
     title,
     detail: detail && detail !== title ? detail : '',
     suggestion: readSuggestion(raw),
-    // 이전 커밋에서 온 지적. 수확이 자기 커밋 기준으로 링크를 걸 수 있도록 SHA를 함께
+    // 지난 실행에서 온 지적. 그 코멘트가 달린 커밋으로 링크를 걸 수 있도록 SHA를 함께
     // 넘긴다. 없으면 아래에서 이번 실행의 HEAD 로 떨어진다.
     stale: raw.stale === true,
     sha: firstString(raw, ['sha']),
@@ -253,8 +253,8 @@ function dedupe(findings) {
   let serial = 0;
 
   for (const finding of findings) {
-    // 이전 커밋 지적은 같은 자리에 같은 제목이어도 이번 지적과 묶지 않는다. 묶으면
-    // 한쪽 배지에 흡수되어 어느 커밋 것인지 알 수 없게 된다.
+    // 지난 실행 지적은 같은 자리에 같은 제목이어도 이번 지적과 묶지 않는다. 묶으면
+    // 한쪽 배지에 흡수되어 어느 실행에서 온 것인지 알 수 없게 된다.
     const scope = finding.stale ? `stale:${finding.sha}` : 'fresh';
     const key = `${scope}:${finding.file}:${finding.line}:${finding.title.toLowerCase()}`;
     const existing = byKey.get(key);
@@ -296,8 +296,8 @@ function locationMarkdown(finding, repo, sha) {
   if (!finding.file) return '';
   const anchor = finding.line > 0 ? `#L${finding.line}` : '';
   const label = finding.line > 0 ? `${finding.file}:${finding.line}` : finding.file;
-  // 지적이 자기 커밋을 들고 있으면 그걸 쓴다. 이전 커밋 지적을 HEAD 로 링크하면
-  // 그 사이 줄이 밀려 엉뚱한 코드를 짚는다.
+  // 지적이 자기 커밋을 들고 있으면 그걸 쓴다. 이전 커밋의 지적을 HEAD 로 링크하면
+  // 그 사이 줄이 밀려 엉뚱한 코드를 짚는다. 같은 커밋이면 어느 쪽이든 결과가 같다.
   const target = finding.sha || sha;
   if (!repo || !target) return `\`${label}\``;
   return `[\`${label}\`](https://github.com/${repo}/blob/${target}/${encodePath(finding.file)}${anchor})`;
@@ -346,8 +346,8 @@ function renderStatusLine(sources, statuses) {
       if (outcome === 'skipped') return `${label} ⏭️ 건너뜀`;
       if (outcome && outcome !== 'success') return `${label} ⚠️ 실패`;
       if (!parsed) return `${label} ⚠️ 출력 없음`;
-      // 이번 커밋 지적만 센다. 이전 커밋 지적은 아래 별도 섹션에 실리므로 여기 더하면
-      // 방금 리뷰에서 나온 건수를 부풀린다.
+      // 이번 실행이 수확한 것만 센다. 지난 실행 지적은 아래 별도 섹션에 실리므로
+      // 여기 더하면 방금 리뷰에서 나온 건수를 부풀린다.
       return `${label} ✅ ${findings.filter((f) => !f.stale).length}건`;
     })
     .join(' · ');
@@ -395,7 +395,7 @@ function renderBody({ sources, statuses, findings, repo, sha }) {
   }
 
   if (fresh.length === 0) {
-    parts.push('이번 커밋에는 지적 사항이 없습니다.', '');
+    parts.push('이번 실행에서는 새로 나온 지적이 없습니다.', '');
   }
 
   for (const severity of SEVERITIES) {
@@ -405,12 +405,16 @@ function renderBody({ sources, statuses, findings, repo, sha }) {
     for (const finding of group) parts.push(renderFinding(finding, repo, sha), '');
   }
 
-  // 이전 커밋 지적. 리뷰 도중 push 가 나서 실행이 취소되면 앱은 그 사실을 모르고
-  // 이전 커밋에 코멘트를 마저 단다. 원본은 지워지므로 여기 싣지 않으면 아무 데도
-  // 안 남는다. 이미 고쳐진 지적일 수 있어 접어 두고 이번 지적과 섞지 않는다.
+  // 이번 실행이 수확하지 못한 지적. 리뷰 도중 push 가 나서 실행이 취소되면 앱은 그
+  // 사실을 모르고 이전 커밋에 코멘트를 마저 달고, 같은 커밋에서 워크플로를 재실행하면
+  // 지난 실행의 코멘트가 그대로 남는다. 어느 쪽이든 원본은 지워지므로 여기 싣지 않으면
+  // 아무 데도 안 남는다.
+  //
+  // "지난 커밋" 이 아니라 "지난 실행" 이다. 같은 커밋에서 재실행한 경우도 여기 들어오는데
+  // 커밋 기준으로 이름 붙이면 코드가 안 바뀐 지적을 바뀐 것처럼 읽게 된다.
   if (stale.length > 0) {
     parts.push(
-      `<details><summary>🕒 지난 커밋에서 온 지적 (${stale.length}) — 이미 반영됐을 수 있습니다</summary>`,
+      `<details><summary>🕒 지난 실행에서 온 지적 (${stale.length}) — 이미 반영됐을 수 있습니다</summary>`,
       '',
     );
     for (const severity of SEVERITIES) {
