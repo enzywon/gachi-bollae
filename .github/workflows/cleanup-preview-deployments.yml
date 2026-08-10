@@ -1,0 +1,43 @@
+name: Preview 배포 정리
+
+on:
+  pull_request:
+    types:
+      - closed
+  schedule:
+    # 매일 03:17 KST. 정각을 피해 GitHub Actions 예약 실행 지연을 줄인다.
+    - cron: "17 18 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: cleanup-preview-deployments
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    name: 닫힌 PR Preview 정리
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_PROJECT_ID: prj_ulGSBbfWXgA9K3b9KgMzx5QzcNw0
+      VERCEL_TEAM_ID: team_260kLyoRxXq4EAR2jQ36vluC
+      CLOSED_PR_NUMBER: ${{ github.event.pull_request.number }}
+    steps:
+      - name: 저장소 체크아웃
+        uses: actions/checkout@v6
+
+      - name: Vercel 토큰 확인
+        run: |
+          if [ -z "$VERCEL_TOKEN" ]; then
+            echo "Repository secret VERCEL_TOKEN이 필요합니다." >&2
+            exit 1
+          fi
+
+      - name: 닫힌 PR Preview 배포 삭제
+        run: node scripts/cleanup-vercel-previews.mjs
