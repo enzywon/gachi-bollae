@@ -78,7 +78,7 @@ PR을 열거나 커밋을 푸시하면 `AI Review` 워크플로가 리뷰를 요
 
 1. `enzy-won` 계정에서 Fine-grained personal access token을 만듭니다.
 2. Resource owner는 `enzywon` 조직, 접근 저장소는 `gachi-bollae` 하나만 선택합니다.
-3. Repository permissions에서 `Issues: Read and write`를 추가합니다. GitHub는 PR의 일반 댓글을 Issue comment로 처리합니다. 원본 인라인 코멘트 삭제가 Actions 토큰으로 막혔을 때 이 토큰으로 재시도하므로 `Pull requests: Read and write`도 함께 추가합니다.
+3. Repository permissions에서 `Issues: Read and write`만 추가합니다. GitHub는 PR의 일반 댓글을 Issue comment로 처리합니다. 인라인 코멘트 삭제는 Actions 토큰으로 하므로 이 토큰에 `Pull requests` 권한은 주지 않습니다. Actions 토큰이 막히면 삭제 재시도도 실패하는데, 그때는 원본 코멘트가 남을 뿐 리뷰 결과는 통합 코멘트에 그대로 실립니다.
 4. 저장소의 `Settings > Secrets and variables > Actions`에 `ENZY_WON_CODEX_REVIEW_TOKEN` 이름으로 저장합니다.
 
 토큰은 파일이나 PR에 입력하지 않습니다. 만료일을 설정하고, 만료되거나 폐기한 뒤에는 같은 이름의 Secret만 교체합니다. 이 Secret이 없으면 워크플로는 Actions 토큰으로 리뷰를 요청하지만, 구독 귀속이 흐려집니다.
