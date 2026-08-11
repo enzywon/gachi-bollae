@@ -8,7 +8,13 @@ import { createRecord } from "./_lib/client";
 
 type Mode = "solo" | "together";
 type Reaction = "pick" | "skip" | "watched";
+type StyleTheme = "midnight" | "arthouse" | "popcorn";
 
+const STYLE_THEMES: { id: StyleTheme; label: string; description: string; colors: string[] }[] = [
+  { id: "midnight", label: "미드나잇", description: "로맨틱 시네마", colors: ["#0d0b18", "#b766f4", "#ff7da4"] },
+  { id: "arthouse", label: "아트하우스", description: "감성적인 매거진", colors: ["#f4efe7", "#6e2339", "#d08a55"] },
+  { id: "popcorn", label: "팝콘 클럽", description: "밝고 캐주얼", colors: ["#fff7e8", "#ff6b4a", "#316b5c"] },
+];
 
 const CONTEXT_POINTS = 35;
 const MOOD_POINTS = 25;
@@ -35,6 +41,7 @@ function ToggleChip({
 }
 
 export default function Home() {
+  const [styleTheme, setStyleTheme] = useState<StyleTheme>("midnight");
   const [mode, setMode] = useState<Mode | null>(null);
   const [step, setStep] = useState(0);
   const [context, setContext] = useState("");
@@ -179,7 +186,7 @@ export default function Home() {
   const progress = step === 0 ? 0 : Math.min(step, 4) * 25;
 
   return (
-    <main className="app-shell">
+    <main className="app-shell" data-theme={styleTheme}>
       <div className="ambient ambient-left" />
       <div className="ambient ambient-right" />
       <header className="topbar">
@@ -204,6 +211,29 @@ export default function Home() {
           <span style={{ width: `${progress}%` }} />
         </div>
       )}
+
+      <section className="style-preview" aria-labelledby="style-preview-title">
+        <div className="style-preview-copy">
+          <span id="style-preview-title">STYLE PREVIEW</span>
+          <strong>어떤 무드가 더 어울리나요?</strong>
+        </div>
+        <div className="style-options" role="group" aria-label="스타일 시안 선택">
+          {STYLE_THEMES.map((theme) => (
+            <button
+              type="button"
+              key={theme.id}
+              className={styleTheme === theme.id ? "active" : ""}
+              aria-pressed={styleTheme === theme.id}
+              onClick={() => setStyleTheme(theme.id)}
+            >
+              <span className="style-swatches" aria-hidden="true">
+                {theme.colors.map((color) => <i key={color} style={{ backgroundColor: color }} />)}
+              </span>
+              <span><strong>{theme.label}</strong><small>{theme.description}</small></span>
+            </button>
+          ))}
+        </div>
+      </section>
 
       <div className="content-wrap">
         {step === 0 && (
