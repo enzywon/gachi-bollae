@@ -324,11 +324,16 @@ export function selectRoundComments(comments, source, sha, sinceIso, reviewIds) 
 // 단 것도, 같은 커밋에서 재실행하기 전 라운드가 남긴 것도 여기 들어온다. 원본을
 // 지우는 이상 둘 다 통합 코멘트로 옮겨야 정보가 남는다.
 // 옮길 내용이 없는 잡음 회신만 뺀다.
-export function selectStaleComments(mine, roundComments, source) {
+export function selectHistoricalComments(mine, roundComments, source, sha) {
   const round = new Set(roundComments.map((c) => c.id));
-  return mine
+  const historical = mine
     .filter((c) => !round.has(c.id))
     .filter((c) => !source.noise?.test(c.body ?? ''));
+
+  return {
+    priorRound: historical.filter((c) => (c.original_commit_id || c.commit_id || '') === sha),
+    previousCommit: historical.filter((c) => (c.original_commit_id || c.commit_id || '') !== sha),
+  };
 }
 
 function toFinding(comment, source) {
@@ -361,18 +366,25 @@ function harvest(repo, pr, sha, source, sinceIso, reviewIds) {
   //
   // 잡음 회신은 옮길 내용이 없으므로 뺀다. selectRoundComments 가 먼저 걸러내므로
   // 여기서 한 번 더 걸러야 한다.
-  const stale = selectStaleComments(mine, comments, source);
+  const historical = selectHistoricalComments(mine, comments, source, sha);
 
   // 링크는 그 코멘트가 달린 커밋을 가리켜야 한다. 이전 커밋 지적을 현재 HEAD 로
   // 링크하면 줄이 밀려 엉뚱한 코드를 짚는다.
-  const staleFindings = stale.map((c) => ({
-    ...toFinding(c, source),
-    stale: true,
-    sha: c.original_commit_id || c.commit_id || '',
-  }));
+  const historicalFindings = [
+    ...historical.priorRound.map((c) => ({
+      ...toFinding(c, source),
+      history: 'prior-round',
+      sha,
+    })),
+    ...historical.previousCommit.map((c) => ({
+      ...toFinding(c, source),
+      history: 'previous-commit',
+      sha: c.original_commit_id || c.commit_id || '',
+    })),
+  ];
 
   return {
-    findings: [...findings, ...staleFindings],
+    findings: [...findings, ...historicalFindings],
     deleteIds: mine.map((c) => c.id).filter(Boolean),
   };
 }
@@ -462,9 +474,9 @@ async function main() {
   const { findings, deleteIds } = harvest(opts.repo, opts.pr, opts.sha, source, roundStart, reviewIds);
   const noiseIds = findNoiseDeleteIds(opts.repo, opts.pr, source);
   const hideIds = findReviewNodeIds(opts.repo, opts.pr, source);
-  const staleCount = findings.filter((f) => f.stale).length;
-  const staleNote = staleCount > 0 ? ` (지난 실행 ${staleCount}건 포함)` : '';
-  console.log(`${opts.source} 수확 완료 (${reason}): ${findings.length}건${staleNote}, 지울 코멘트 ${deleteIds.length + noiseIds.length}건, 접을 리뷰 본문 ${hideIds.length}건`);
+  const historicalCount = findings.filter((f) => f.history).length;
+  const historicalNote = historicalCount > 0 ? ` (이전 결과 ${historicalCount}건 포함)` : '';
+  console.log(`${opts.source} 수확 완료 (${reason}): ${findings.length}건${historicalNote}, 지울 코멘트 ${deleteIds.length + noiseIds.length}건, 접을 리뷰 본문 ${hideIds.length}건`);
 
   if (opts.out) writeFileSync(opts.out, JSON.stringify({ summary: '', findings }, null, 2), 'utf8');
   if (opts['ids-out']) writeFileSync(opts['ids-out'], hideIds.join('\n'), 'utf8');

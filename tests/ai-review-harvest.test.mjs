@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { SOURCES, selectRoundComments, selectStaleComments } from "../scripts/ai-review/harvest.mjs";
+import { SOURCES, selectHistoricalComments, selectRoundComments } from "../scripts/ai-review/harvest.mjs";
 
 /**
  * 수확기가 이번 라운드의 지적만 골라내는지 확인한다.
@@ -10,6 +10,7 @@ import { SOURCES, selectRoundComments, selectStaleComments } from "../scripts/ai
  */
 
 const SHA = "0d28459d814e904b8f793bd9851d1c47100ca2ee";
+const PREVIOUS_SHA = "1111111111111111111111111111111111111111";
 const SINCE = "2026-08-07T13:00:00Z";
 
 /** CodeRabbit이 다른 봇의 인라인 코멘트마다 붙이는 회신. 지적이 아니다. */
@@ -137,14 +138,22 @@ test("리뷰에 속하지 않은 단독 코멘트는 시각과 SHA로 거른다"
  */
 test("취소된 실행이 이전 커밋에 남긴 지적을 옮길 대상으로 고른다", () => {
   const all = [
-    comment({ id: 1, node_id: "old-1", pull_request_review_id: 99, body: REAL_FINDING }),
+    comment({
+      id: 1,
+      node_id: "old-1",
+      pull_request_review_id: 99,
+      commit_id: PREVIOUS_SHA,
+      original_commit_id: PREVIOUS_SHA,
+      body: REAL_FINDING,
+    }),
     comment({ id: 2, node_id: "new-1", pull_request_review_id: 100, body: REAL_FINDING }),
   ];
   const round = selectRoundComments(all, SOURCES.coderabbit, SHA, SINCE, new Set([100]));
-  const stale = selectStaleComments(all, round, SOURCES.coderabbit);
+  const historical = selectHistoricalComments(all, round, SOURCES.coderabbit, SHA);
 
   assert.deepEqual(round.map((c) => c.node_id), ["new-1"]);
-  assert.deepEqual(stale.map((c) => c.node_id), ["old-1"]);
+  assert.deepEqual(historical.previousCommit.map((c) => c.node_id), ["old-1"]);
+  assert.deepEqual(historical.priorRound, []);
 });
 
 test("옮길 내용이 없는 회신은 지난 실행 지적으로도 세지 않는다", () => {
@@ -153,10 +162,10 @@ test("옮길 내용이 없는 회신은 지난 실행 지적으로도 세지 않
     comment({ id: 2, node_id: "old-1", pull_request_review_id: 99, body: REAL_FINDING }),
   ];
   const round = selectRoundComments(all, SOURCES.coderabbit, SHA, SINCE, new Set([100]));
-  const stale = selectStaleComments(all, round, SOURCES.coderabbit);
+  const historical = selectHistoricalComments(all, round, SOURCES.coderabbit, SHA);
 
   assert.deepEqual(round, []);
-  assert.deepEqual(stale.map((c) => c.node_id), ["old-1"]);
+  assert.deepEqual(historical.priorRound.map((c) => c.node_id), ["old-1"]);
 });
 
 /**
@@ -169,8 +178,9 @@ test("같은 커밋의 지난 라운드 코멘트도 옮길 대상으로 고른�
     comment({ id: 2, node_id: "run-2", pull_request_review_id: 101, body: REAL_FINDING }),
   ];
   const round = selectRoundComments(all, SOURCES.coderabbit, SHA, SINCE, new Set([101]));
-  const stale = selectStaleComments(all, round, SOURCES.coderabbit);
+  const historical = selectHistoricalComments(all, round, SOURCES.coderabbit, SHA);
 
   assert.deepEqual(round.map((c) => c.node_id), ["run-2"]);
-  assert.deepEqual(stale.map((c) => c.node_id), ["run-1"]);
+  assert.deepEqual(historical.priorRound.map((c) => c.node_id), ["run-1"]);
+  assert.deepEqual(historical.previousCommit, []);
 });
