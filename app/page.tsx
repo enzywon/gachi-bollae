@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import RatingSheet, { type RatingSheetValues } from "./_components/RatingSheet";
 import { AVOIDS, CONTENTS, CONTEXTS, MOODS, PROVIDERS, TASTES, contentKeyOf, type DemoContent } from "./_data/contents";
-import { createRecord } from "./_lib/client";
+import { createRecord, fetchRecords } from "./_lib/client";
+import { historyFromRecords, historyPointsFor, ratingSignal, strongestPositiveTag } from "./_lib/recommendation-history";
 
 type Mode = "solo" | "together";
 type Reaction = "pick" | "skip" | "watched";
@@ -15,7 +16,15 @@ const MOOD_POINTS = 25;
 const MY_TASTE_POINTS = 9;
 const SHARED_TASTE_POINTS = 8;
 const PARTNER_TASTE_POINTS = 4;
+const HISTORY_TAG_POINTS = 5;
 const MAX_TAG_MATCHES = Math.max(...CONTENTS.map((item) => item.tags.length));
+
+type RecommendationHistory = {
+  watchedContentKeys: string[];
+  tagWeights: Record<string, number>;
+};
+
+const EMPTY_HISTORY: RecommendationHistory = { watchedContentKeys: [], tagWeights: {} };
 
 function ToggleChip({
   active,
@@ -48,6 +57,7 @@ export default function Home() {
   const [reactions, setReactions] = useState<Record<number, Reaction>>({});
   const [selectedContent, setSelectedContent] = useState<DemoContent | null>(null);
   const [refreshSeed, setRefreshSeed] = useState(0);
+  const [history, setHistory] = useState<RecommendationHistory>(EMPTY_HISTORY);
 
   // 기록과 평가 상태
   const [sheetTarget, setSheetTarget] = useState<DemoContent | null>(null);
@@ -55,6 +65,21 @@ export default function Home() {
   const [sheetError, setSheetError] = useState<string | null>(null);
   const [savedIds, setSavedIds] = useState<number[]>([]);
   const [toast, setToast] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    fetchRecords({ sort: "recent", format: "all", status: "all" })
+      .then((data) => {
+        if (active) setHistory(historyFromRecords(data, CONTENTS, contentKeyOf));
+      })
+      // 추천은 저장소가 없어도 동작해야 한다. 기록 조회 실패 시 기존 추천으로 저하한다.
+      .catch(() => undefined);
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const toggleList = (value: string, list: string[], setter: (next: string[]) => void) => {
     setter(list.includes(value) ? list.filter((item) => item !== value) : [...list, value]);
@@ -77,6 +102,7 @@ export default function Home() {
         const partner = countMatches(partnerTastes, item);
         points += Math.min(mine, partner) * SHARED_TASTE_POINTS + partner * PARTNER_TASTE_POINTS;
       }
+      points += historyPointsFor(item, history.tagWeights, HISTORY_TAG_POINTS);
       return points;
     };
 
@@ -88,22 +114,34 @@ export default function Home() {
         Math.min(cap(myTastes), cap(partnerTastes)) * SHARED_TASTE_POINTS +
         cap(partnerTastes) * PARTNER_TASTE_POINTS;
     }
+    const historyCeiling = Math.max(
+      0,
+      ...CONTENTS.map((item) =>
+        historyPointsFor(
+          item,
+          Object.fromEntries(Object.entries(history.tagWeights).map(([tag, weight]) => [tag, Math.max(0, weight)])),
+          HISTORY_TAG_POINTS
+        )
+      )
+    );
+    bestPossible += historyCeiling;
 
     const eligible = CONTENTS.filter((item) => {
       const durationOkay = item.runtime <= maxRuntime;
       const formatOkay = format === "상관없음" || item.format === format;
       const providerOkay = provider === "상관없음" || item.provider === provider;
       const safe = avoids.every((avoid) => !item.avoid.includes(avoid));
-      return durationOkay && formatOkay && providerOkay && safe;
+      const notWatched = !history.watchedContentKeys.includes(contentKeyOf(item));
+      return durationOkay && formatOkay && providerOkay && safe && notWatched;
     }).sort((a, b) => score(b) - score(a));
 
     if (eligible.length === 0) return [];
     const offset = refreshSeed % eligible.length;
     return [...eligible.slice(offset), ...eligible.slice(0, offset)]
       .slice(0, 3)
-      .map((item) => ({ item, fit: Math.min(100, Math.round((score(item) / bestPossible) * 100)) }))
+      .map((item) => ({ item, fit: Math.max(0, Math.min(100, Math.round((score(item) / bestPossible) * 100))) }))
       .sort((a, b) => b.fit - a.fit);
-  }, [avoids, context, duration, format, mode, mood, myTastes, partnerTastes, provider, refreshSeed]);
+  }, [avoids, context, duration, format, history, mode, mood, myTastes, partnerTastes, provider, refreshSeed]);
 
   const reset = () => {
     setMode(null);
@@ -152,6 +190,15 @@ export default function Home() {
       );
 
       setSavedIds((current) => (current.includes(sheetTarget.id) ? current : [...current, sheetTarget.id]));
+      setHistory((current) => {
+        const tagWeights = { ...current.tagWeights };
+        const signal = ratingSignal(values.rating);
+        for (const tag of sheetTarget.tags) tagWeights[tag] = (tagWeights[tag] ?? 0) + signal;
+        return {
+          watchedContentKeys: Array.from(new Set([...current.watchedContentKeys, contentKeyOf(sheetTarget)])),
+          tagWeights,
+        };
+      });
       setToast(
         values.rating === null
           ? `“${sheetTarget.title}” 기록을 저장했어요. 별점은 나중에 남길 수 있어요.`
@@ -368,6 +415,9 @@ export default function Home() {
                 <span className="eyebrow">YOUR PICKS</span>
                 <h1>{recommendations.length === 0 ? "조건에 맞는 콘텐츠가 없어요." : mode === "together" ? `두 분께 잘 맞는 ${recommendations.length}개예요.` : `지금 보기 좋은 ${recommendations.length}개예요.`}</h1>
                 <p>{context} · {mood} · {duration} 기준으로 골랐어요.</p>
+                {history.watchedContentKeys.length > 0 && (
+                  <p>함께 본 작품 {history.watchedContentKeys.length}개와 남긴 별점을 추천에 반영했어요.</p>
+                )}
               </div>
               <button type="button" className="edit-button" onClick={() => setStep(3)}>조건 수정</button>
             </div>
@@ -402,8 +452,8 @@ export default function Home() {
             {recommendations.length === 0 && (
               <div className="empty-state">
                 <span aria-hidden="true">⌕</span>
-                <h2>필수 조건은 그대로 지켰어요.</h2>
-                <p>가용 시간이나 콘텐츠 유형 같은 선호 조건을 조금 넓히면 결과를 찾을 수 있어요.</p>
+                <h2>{history.watchedContentKeys.length > 0 ? "아직 보지 않은 새 후보가 부족해요." : "필수 조건은 그대로 지켰어요."}</h2>
+                <p>{history.watchedContentKeys.length > 0 ? "본 작품은 자동으로 제외했어요. 조건을 넓히면 다른 후보를 찾을 수 있어요." : "가용 시간이나 콘텐츠 유형 같은 선호 조건을 조금 넓히면 결과를 찾을 수 있어요."}</p>
                 <button type="button" onClick={() => setStep(3)}>조건 다시 보기</button>
               </div>
             )}
@@ -412,11 +462,13 @@ export default function Home() {
               {recommendations.map(({ item, fit }, index) => {
                 const reaction = reactions[item.id];
                 const matchedTaste = [...myTastes, ...partnerTastes].find((taste) => item.tags.includes(taste));
+                const historyTag = strongestPositiveTag(item, history.tagWeights);
                 // 점수에 실제로 반영된 근거만 노출한다.
                 const matchedReasons = [
                   item.contexts.includes(context) ? `${context}에 잘 맞아요` : null,
                   item.moods.includes(mood) ? "오늘 무드와 잘 맞아요" : null,
                   matchedTaste ? `${matchedTaste} 취향 반영` : null,
+                  historyTag ? `이전에 좋아한 ${historyTag} 취향 반영` : null,
                   avoids.length > 0 ? "피하고 싶다고 한 요소가 없어요" : null,
                 ].filter((reason) => reason !== null);
                 const reasons = matchedReasons.length > 0 ? matchedReasons : ["선택한 필수 조건을 모두 만족해요"];
