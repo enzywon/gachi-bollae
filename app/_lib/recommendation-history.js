@@ -50,6 +50,11 @@ export function strongestPositiveTag(content, tagWeights) {
     .sort((a, b) => (tagWeights[b] ?? 0) - (tagWeights[a] ?? 0))[0] ?? null;
 }
 
+/** 최신 시청 작품을 맨 앞에 두고 기존 중복 키는 제거한다. */
+export function markContentWatched(watchedContentKeys, contentKey) {
+  return [contentKey, ...watchedContentKeys.filter((key) => key !== contentKey)];
+}
+
 /**
  * 새 콘텐츠를 먼저 추천하고, 자리가 부족할 때만 오래전에 본 콘텐츠부터 채운다.
  * `watchedContentKeys`는 최근 시청순으로 전달된다고 가정한다.

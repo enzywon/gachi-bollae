@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   historyFromRecords,
   historyPointsFor,
+  markContentWatched,
   ratingSignal,
   selectRecommendationCandidates,
   strongestPositiveTag,
@@ -76,4 +77,17 @@ test("새 후보가 충분하면 본 작품을 추천하지 않는다", () => {
 
   assert.deepEqual(selected.map(({ item }) => item.id), [2, 3, 4]);
   assert.equal(selected.some(({ previouslyWatched }) => previouslyWatched), false);
+});
+
+test("새로 기록하거나 재시청한 작품을 최신 시청순 맨 앞으로 옮긴다", () => {
+  assert.deepEqual(markContentWatched(["demo:3", "demo:2"], "demo:1"), [
+    "demo:1",
+    "demo:3",
+    "demo:2",
+  ]);
+  assert.deepEqual(markContentWatched(["demo:3", "demo:2", "demo:1"], "demo:2"), [
+    "demo:2",
+    "demo:3",
+    "demo:1",
+  ]);
 });

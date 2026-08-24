@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import RatingSheet, { type RatingSheetValues } from "./_components/RatingSheet";
 import { AVOIDS, CONTENTS, CONTEXTS, MOODS, PROVIDERS, TASTES, contentKeyOf, type DemoContent } from "./_data/contents";
 import { createRecord, fetchRecords } from "./_lib/client";
 import {
   historyFromRecords,
   historyPointsFor,
+  markContentWatched,
   ratingSignal,
   selectRecommendationCandidates,
   strongestPositiveTag,
@@ -64,6 +65,7 @@ export default function Home() {
   const [selectedContent, setSelectedContent] = useState<DemoContent | null>(null);
   const [refreshSeed, setRefreshSeed] = useState(0);
   const [history, setHistory] = useState<RecommendationHistory>(EMPTY_HISTORY);
+  const historyRequestGeneration = useRef(0);
 
   // 기록과 평가 상태
   const [sheetTarget, setSheetTarget] = useState<DemoContent | null>(null);
@@ -74,10 +76,13 @@ export default function Home() {
 
   useEffect(() => {
     let active = true;
+    const requestGeneration = historyRequestGeneration.current;
 
     fetchRecords({ sort: "recent", format: "all", status: "all" })
       .then((data) => {
-        if (active) setHistory(historyFromRecords(data, CONTENTS, contentKeyOf));
+        if (active && requestGeneration === historyRequestGeneration.current) {
+          setHistory(historyFromRecords(data, CONTENTS, contentKeyOf));
+        }
       })
       // 추천은 저장소가 없어도 동작해야 한다. 기록 조회 실패 시 기존 추천으로 저하한다.
       .catch(() => undefined);
@@ -195,16 +200,26 @@ export default function Home() {
         values
       );
 
+      const requestGeneration = historyRequestGeneration.current + 1;
+      historyRequestGeneration.current = requestGeneration;
       setSavedIds((current) => (current.includes(sheetTarget.id) ? current : [...current, sheetTarget.id]));
       setHistory((current) => {
         const tagWeights = { ...current.tagWeights };
         const signal = ratingSignal(values.rating);
         for (const tag of sheetTarget.tags) tagWeights[tag] = (tagWeights[tag] ?? 0) + signal;
         return {
-          watchedContentKeys: Array.from(new Set([...current.watchedContentKeys, contentKeyOf(sheetTarget)])),
+          watchedContentKeys: markContentWatched(current.watchedContentKeys, contentKeyOf(sheetTarget)),
           tagWeights,
         };
       });
+      fetchRecords({ sort: "recent", format: "all", status: "all" })
+        .then((data) => {
+          if (requestGeneration === historyRequestGeneration.current) {
+            setHistory(historyFromRecords(data, CONTENTS, contentKeyOf));
+          }
+        })
+        // 저장은 이미 성공했으므로 재동기화 실패 시 낙관적으로 갱신한 이력을 유지한다.
+        .catch(() => undefined);
       setToast(
         values.rating === null
           ? `“${sheetTarget.title}” 기록을 저장했어요. 별점은 나중에 남길 수 있어요.`
