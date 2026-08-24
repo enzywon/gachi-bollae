@@ -5,7 +5,13 @@ import { useEffect, useMemo, useState } from "react";
 import RatingSheet, { type RatingSheetValues } from "./_components/RatingSheet";
 import { AVOIDS, CONTENTS, CONTEXTS, MOODS, PROVIDERS, TASTES, contentKeyOf, type DemoContent } from "./_data/contents";
 import { createRecord, fetchRecords } from "./_lib/client";
-import { historyFromRecords, historyPointsFor, ratingSignal, strongestPositiveTag } from "./_lib/recommendation-history";
+import {
+  historyFromRecords,
+  historyPointsFor,
+  ratingSignal,
+  selectRecommendationCandidates,
+  strongestPositiveTag,
+} from "./_lib/recommendation-history";
 
 type Mode = "solo" | "together";
 type Reaction = "pick" | "skip" | "watched";
@@ -131,16 +137,16 @@ export default function Home() {
       const formatOkay = format === "상관없음" || item.format === format;
       const providerOkay = provider === "상관없음" || item.provider === provider;
       const safe = avoids.every((avoid) => !item.avoid.includes(avoid));
-      const notWatched = !history.watchedContentKeys.includes(contentKeyOf(item));
-      return durationOkay && formatOkay && providerOkay && safe && notWatched;
+      return durationOkay && formatOkay && providerOkay && safe;
     }).sort((a, b) => score(b) - score(a));
 
     if (eligible.length === 0) return [];
-    const offset = refreshSeed % eligible.length;
-    return [...eligible.slice(offset), ...eligible.slice(0, offset)]
-      .slice(0, 3)
-      .map((item) => ({ item, fit: Math.max(0, Math.min(100, Math.round((score(item) / bestPossible) * 100))) }))
-      .sort((a, b) => b.fit - a.fit);
+    return selectRecommendationCandidates(eligible, history.watchedContentKeys, contentKeyOf, refreshSeed, 3)
+      .map(({ item, previouslyWatched }) => ({
+        item,
+        previouslyWatched,
+        fit: Math.max(0, Math.min(100, Math.round((score(item) / bestPossible) * 100))),
+      }));
   }, [avoids, context, duration, format, history, mode, mood, myTastes, partnerTastes, provider, refreshSeed]);
 
   const reset = () => {
@@ -416,7 +422,7 @@ export default function Home() {
                 <h1>{recommendations.length === 0 ? "조건에 맞는 콘텐츠가 없어요." : mode === "together" ? `두 분께 잘 맞는 ${recommendations.length}개예요.` : `지금 보기 좋은 ${recommendations.length}개예요.`}</h1>
                 <p>{context} · {mood} · {duration} 기준으로 골랐어요.</p>
                 {history.watchedContentKeys.length > 0 && (
-                  <p>함께 본 작품 {history.watchedContentKeys.length}개와 남긴 별점을 추천에 반영했어요.</p>
+                  <p>함께 본 작품 {history.watchedContentKeys.length}개는 우선 제외하고, 남긴 별점은 추천에 반영했어요.</p>
                 )}
               </div>
               <button type="button" className="edit-button" onClick={() => setStep(3)}>조건 수정</button>
@@ -452,14 +458,14 @@ export default function Home() {
             {recommendations.length === 0 && (
               <div className="empty-state">
                 <span aria-hidden="true">⌕</span>
-                <h2>{history.watchedContentKeys.length > 0 ? "아직 보지 않은 새 후보가 부족해요." : "필수 조건은 그대로 지켰어요."}</h2>
-                <p>{history.watchedContentKeys.length > 0 ? "본 작품은 자동으로 제외했어요. 조건을 넓히면 다른 후보를 찾을 수 있어요." : "가용 시간이나 콘텐츠 유형 같은 선호 조건을 조금 넓히면 결과를 찾을 수 있어요."}</p>
+                <h2>필수 조건은 그대로 지켰어요.</h2>
+                <p>가용 시간이나 콘텐츠 유형 같은 선호 조건을 조금 넓히면 결과를 찾을 수 있어요.</p>
                 <button type="button" onClick={() => setStep(3)}>조건 다시 보기</button>
               </div>
             )}
 
             <div className="result-grid">
-              {recommendations.map(({ item, fit }, index) => {
+              {recommendations.map(({ item, fit, previouslyWatched }, index) => {
                 const reaction = reactions[item.id];
                 const matchedTaste = [...myTastes, ...partnerTastes].find((taste) => item.tags.includes(taste));
                 const historyTag = strongestPositiveTag(item, history.tagWeights);
@@ -482,6 +488,7 @@ export default function Home() {
                     <div className="result-body">
                       <div className="result-topline"><span>{item.eyebrow}</span><b>{mode === "together" ? `${fit}% 함께 만족` : `${fit}% 적합`}</b></div>
                       <h2>{item.title}</h2>
+                      {previouslyWatched && <p className="rewatch-note">새 후보가 부족해 오래전에 본 작품을 다시 추천했어요.</p>}
                       <div className="metadata"><span>{item.format}</span><span>{item.runtime}분</span><span>{item.provider}</span></div>
                       <p className="synopsis">{item.synopsis}</p>
                       <div className="reason-list">

@@ -4,6 +4,7 @@ import {
   historyFromRecords,
   historyPointsFor,
   ratingSignal,
+  selectRecommendationCandidates,
   strongestPositiveTag,
 } from "../app/_lib/recommendation-history.js";
 
@@ -50,4 +51,29 @@ test("선호 태그는 추천 점수와 설명 근거가 된다", () => {
   assert.equal(historyPointsFor(candidate, weights, 5), 5);
   assert.equal(strongestPositiveTag(candidate, weights), "코미디");
   assert.equal(strongestPositiveTag(candidate, { 코미디: 0, 드라마: -1 }), null);
+});
+
+test("새 후보를 우선하고 부족한 자리는 오래전에 본 작품부터 채운다", () => {
+  const candidates = [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }];
+  const selected = selectRecommendationCandidates(
+    candidates,
+    ["demo:3", "demo:2", "demo:1"],
+    contentKeyOf,
+    0,
+    3
+  );
+
+  assert.deepEqual(selected, [
+    { item: { id: 4 }, previouslyWatched: false },
+    { item: { id: 1 }, previouslyWatched: true },
+    { item: { id: 2 }, previouslyWatched: true },
+  ]);
+});
+
+test("새 후보가 충분하면 본 작품을 추천하지 않는다", () => {
+  const candidates = [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }];
+  const selected = selectRecommendationCandidates(candidates, ["demo:1"], contentKeyOf, 0, 3);
+
+  assert.deepEqual(selected.map(({ item }) => item.id), [2, 3, 4]);
+  assert.equal(selected.some(({ previouslyWatched }) => previouslyWatched), false);
 });

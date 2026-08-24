@@ -49,3 +49,47 @@ export function strongestPositiveTag(content, tagWeights) {
     .filter((tag) => (tagWeights[tag] ?? 0) > 0)
     .sort((a, b) => (tagWeights[b] ?? 0) - (tagWeights[a] ?? 0))[0] ?? null;
 }
+
+/**
+ * 새 콘텐츠를 먼저 추천하고, 자리가 부족할 때만 오래전에 본 콘텐츠부터 채운다.
+ * `watchedContentKeys`는 최근 시청순으로 전달된다고 가정한다.
+ *
+ * @template T
+ * @param {T[]} candidates
+ * @param {string[]} watchedContentKeys
+ * @param {(content: T) => string} contentKeyOf
+ * @param {number} offset
+ * @param {number} limit
+ * @returns {{ item: T, previouslyWatched: boolean }[]}
+ */
+export function selectRecommendationCandidates(
+  candidates,
+  watchedContentKeys,
+  contentKeyOf,
+  offset,
+  limit
+) {
+  const watchedOrder = new Map(watchedContentKeys.map((key, index) => [key, index]));
+  const unseen = candidates.filter((item) => !watchedOrder.has(contentKeyOf(item)));
+  const watched = candidates
+    .filter((item) => watchedOrder.has(contentKeyOf(item)))
+    .sort(
+      (a, b) =>
+        (watchedOrder.get(contentKeyOf(b)) ?? -1) -
+        (watchedOrder.get(contentKeyOf(a)) ?? -1)
+    );
+
+  const rotate = (items) => {
+    if (items.length === 0) return items;
+    const start = offset % items.length;
+    return [...items.slice(start), ...items.slice(0, start)];
+  };
+
+  const selectedUnseen = rotate(unseen).slice(0, limit);
+  const selectedWatched = rotate(watched).slice(0, limit - selectedUnseen.length);
+
+  return [
+    ...selectedUnseen.map((item) => ({ item, previouslyWatched: false })),
+    ...selectedWatched.map((item) => ({ item, previouslyWatched: true })),
+  ];
+}
