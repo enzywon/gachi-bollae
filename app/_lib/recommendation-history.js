@@ -55,6 +55,11 @@ export function markContentWatched(watchedContentKeys, contentKey) {
   return [contentKey, ...watchedContentKeys.filter((key) => key !== contentKey)];
 }
 
+/** 선택된 후보를 화면의 순위와 적합도가 일치하도록 정렬한다. */
+export function sortRecommendationsByFit(recommendations) {
+  return [...recommendations].sort((a, b) => b.fit - a.fit);
+}
+
 /**
  * 새 콘텐츠를 먼저 추천하고, 자리가 부족할 때만 오래전에 본 콘텐츠부터 채운다.
  * `watchedContentKeys`는 최근 시청순으로 전달된다고 가정한다.

@@ -11,6 +11,7 @@ import {
   markContentWatched,
   ratingSignal,
   selectRecommendationCandidates,
+  sortRecommendationsByFit,
   strongestPositiveTag,
 } from "./_lib/recommendation-history";
 
@@ -146,12 +147,13 @@ export default function Home() {
     }).sort((a, b) => score(b) - score(a));
 
     if (eligible.length === 0) return [];
-    return selectRecommendationCandidates(eligible, history.watchedContentKeys, contentKeyOf, refreshSeed, 3)
-      .map(({ item, previouslyWatched }) => ({
+    return sortRecommendationsByFit(
+      selectRecommendationCandidates(eligible, history.watchedContentKeys, contentKeyOf, refreshSeed, 3).map(({ item, previouslyWatched }) => ({
         item,
         previouslyWatched,
         fit: Math.max(0, Math.min(100, Math.round((score(item) / bestPossible) * 100))),
-      }));
+      }))
+    );
   }, [avoids, context, duration, format, history, mode, mood, myTastes, partnerTastes, provider, refreshSeed]);
 
   const reset = () => {

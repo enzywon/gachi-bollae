@@ -6,6 +6,7 @@ import {
   markContentWatched,
   ratingSignal,
   selectRecommendationCandidates,
+  sortRecommendationsByFit,
   strongestPositiveTag,
 } from "../app/_lib/recommendation-history.js";
 
@@ -90,4 +91,15 @@ test("새로 기록하거나 재시청한 작품을 최신 시청순 맨 앞으�
     "demo:3",
     "demo:1",
   ]);
+});
+
+test("순환해 선택한 후보도 화면에서는 적합도순으로 표시한다", () => {
+  const selected = [
+    { item: { id: 4 }, fit: 45 },
+    { item: { id: 1 }, fit: 92 },
+    { item: { id: 2 }, fit: 71 },
+  ];
+
+  assert.deepEqual(sortRecommendationsByFit(selected).map(({ item }) => item.id), [1, 2, 4]);
+  assert.deepEqual(selected.map(({ item }) => item.id), [4, 1, 2]);
 });
