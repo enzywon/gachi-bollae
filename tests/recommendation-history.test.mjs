@@ -1,0 +1,105 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
+  historyFromRecords,
+  historyPointsFor,
+  markContentWatched,
+  ratingSignal,
+  selectRecommendationCandidates,
+  sortRecommendationsByFit,
+  strongestPositiveTag,
+} from "../app/_lib/recommendation-history.js";
+
+const contents = [
+  { id: 1, tags: ["코미디", "예능"] },
+  { id: 2, tags: ["코미디", "드라마"] },
+];
+const contentKeyOf = (content) => `demo:${content.id}`;
+
+test("별점을 중립 기준의 선호 신호로 바꾼다", () => {
+  assert.deepEqual([1, 2, 3, 4, 5].map(ratingSignal), [-2, -1, 0, 1, 2]);
+  assert.equal(ratingSignal(null), 0);
+});
+
+test("재시청 평가를 태그별로 누적하고 본 작품을 표시한다", () => {
+  const profile = historyFromRecords(
+    {
+      groups: [
+        {
+          contentKey: "demo:1",
+          records: [
+            { review: { rating: 5 } },
+            { review: { rating: 4 } },
+          ],
+        },
+        {
+          contentKey: "demo:2",
+          records: [{ review: { rating: 1 } }],
+        },
+      ],
+    },
+    contents,
+    contentKeyOf
+  );
+
+  assert.deepEqual(profile.watchedContentKeys, ["demo:1", "demo:2"]);
+  assert.deepEqual(profile.tagWeights, { 코미디: 1, 예능: 3, 드라마: -2 });
+});
+
+test("선호 태그는 추천 점수와 설명 근거가 된다", () => {
+  const candidate = { tags: ["코미디", "드라마"] };
+  const weights = { 코미디: 2, 드라마: -1 };
+
+  assert.equal(historyPointsFor(candidate, weights, 5), 5);
+  assert.equal(strongestPositiveTag(candidate, weights), "코미디");
+  assert.equal(strongestPositiveTag(candidate, { 코미디: 0, 드라마: -1 }), null);
+});
+
+test("새 후보를 우선하고 부족한 자리는 오래전에 본 작품부터 채운다", () => {
+  const candidates = [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }];
+  const selected = selectRecommendationCandidates(
+    candidates,
+    ["demo:3", "demo:2", "demo:1"],
+    contentKeyOf,
+    0,
+    3
+  );
+
+  assert.deepEqual(selected, [
+    { item: { id: 4 }, previouslyWatched: false },
+    { item: { id: 1 }, previouslyWatched: true },
+    { item: { id: 2 }, previouslyWatched: true },
+  ]);
+});
+
+test("새 후보가 충분하면 본 작품을 추천하지 않는다", () => {
+  const candidates = [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }];
+  const selected = selectRecommendationCandidates(candidates, ["demo:1"], contentKeyOf, 0, 3);
+
+  assert.deepEqual(selected.map(({ item }) => item.id), [2, 3, 4]);
+  assert.equal(selected.some(({ previouslyWatched }) => previouslyWatched), false);
+});
+
+test("새로 기록하거나 재시청한 작품을 최신 시청순 맨 앞으로 옮긴다", () => {
+  assert.deepEqual(markContentWatched(["demo:3", "demo:2"], "demo:1"), [
+    "demo:1",
+    "demo:3",
+    "demo:2",
+  ]);
+  assert.deepEqual(markContentWatched(["demo:3", "demo:2", "demo:1"], "demo:2"), [
+    "demo:2",
+    "demo:3",
+    "demo:1",
+  ]);
+});
+
+test("순환해 선택한 후보도 화면에서는 적합도순으로 표시한다", () => {
+  const selected = [
+    { item: { id: 4 }, fit: 45 },
+    { item: { id: 1 }, fit: 92 },
+    { item: { id: 2 }, fit: 71 },
+  ];
+
+  assert.deepEqual(sortRecommendationsByFit(selected).map(({ item }) => item.id), [1, 2, 4]);
+  assert.deepEqual(selected.map(({ item }) => item.id), [4, 1, 2]);
+});
