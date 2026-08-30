@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import RatingSheet, { type RatingSheetValues } from "./_components/RatingSheet";
 import { CONTENTS, contentKeyOf, type DemoContent } from "./_data/contents";
-import { createRecord } from "./_lib/client";
+import { createRecord, fetchCatalog } from "./_lib/client";
 
 type Person = "me" | "partner";
 type ChoiceMap = Record<Person, number[]>;
@@ -15,7 +15,7 @@ const PEOPLE: Record<Person, { name: string; initial: string }> = {
   partner: { name: "함께 보는 사람", initial: "함" },
 };
 
-const MATCH_POOL = CONTENTS.filter(
+const DEMO_MATCH_POOL = CONTENTS.filter(
   (item) => item.runtime <= 60 && !item.avoid.includes("잔인함·고어"),
 );
 
@@ -35,13 +35,41 @@ export default function Home() {
   const [sheetSubmitting, setSheetSubmitting] = useState(false);
   const [sheetError, setSheetError] = useState<string | null>(null);
   const [savedTitle, setSavedTitle] = useState("");
+  const [contents, setContents] = useState<DemoContent[]>(CONTENTS);
+  const [catalogSource, setCatalogSource] = useState<"demo" | "tmdb">("demo");
+  const [catalogLoading, setCatalogLoading] = useState(true);
 
-  const current = MATCH_POOL[index];
+  const matchPool = useMemo(() => {
+    const eligible = contents.filter((item) => item.runtime <= 60);
+    return eligible.length >= 3 ? eligible : DEMO_MATCH_POOL;
+  }, [contents]);
+
+  const current = matchPool[index];
   const matches = useMemo(
-    () => MATCH_POOL.filter((item) => choices.me.includes(item.id) && choices.partner.includes(item.id)),
-    [choices],
+    () => matchPool.filter((item) => choices.me.includes(item.id) && choices.partner.includes(item.id)),
+    [choices, matchPool],
   );
   const winner = matches[matchIndex % Math.max(matches.length, 1)];
+
+  useEffect(() => {
+    let active = true;
+
+    fetchCatalog()
+      .then((catalog) => {
+        if (!active) return;
+        const eligible = catalog.contents.filter((item) => item.runtime <= 60);
+        if (eligible.length >= 3) {
+          setContents(catalog.contents);
+          setCatalogSource(catalog.source);
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (active) setCatalogLoading(false);
+      });
+
+    return () => { active = false; };
+  }, []);
 
   const reset = () => {
     setScreen("intro");
@@ -71,7 +99,7 @@ export default function Home() {
       : choices;
     setChoices(nextChoices);
 
-    if (index < MATCH_POOL.length - 1) {
+    if (index < matchPool.length - 1) {
       setIndex((value) => value + 1);
       return;
     }
@@ -136,10 +164,10 @@ export default function Home() {
               <div><i className="avatar partner">함</i><strong>함께 보는 사람</strong><small>준비 완료</small></div>
             </div>
             <div className="match-tonight">
-              <span>🍽 식사 중</span><span>⏱ 60분 이내</span><span>잔인한 장면 제외</span>
+              <span>🍽 식사 중</span><span>⏱ 60분 이내</span><span>{catalogSource === "tmdb" ? "TMDB 인기 콘텐츠" : "추천 데모"}</span>
             </div>
-            <button className="match-primary" type="button" onClick={start}>
-              각자 고르기 시작 <span>→</span>
+            <button className="match-primary" type="button" onClick={start} disabled={catalogLoading}>
+              {catalogLoading ? "오늘의 후보 불러오는 중" : "각자 고르기 시작"} <span>{catalogLoading ? "…" : "→"}</span>
             </button>
             <p className="match-privacy">각자의 응답은 선택이 겹쳤을 때만 공개됩니다</p>
           </div>
@@ -157,9 +185,9 @@ export default function Home() {
               <i className={`avatar ${person}`}>{PEOPLE[person].initial}</i>
               <span><small>지금 고르는 사람</small><strong>{PEOPLE[person].name}</strong></span>
             </div>
-            <div className="picker-count"><strong>{index + 1}</strong> / {MATCH_POOL.length}</div>
+            <div className="picker-count"><strong>{index + 1}</strong> / {matchPool.length}</div>
           </div>
-          <div className="picker-progress"><span style={{ width: `${((index + 1) / MATCH_POOL.length) * 100}%` }} /></div>
+          <div className="picker-progress"><span style={{ width: `${((index + 1) / matchPool.length) * 100}%` }} /></div>
 
           {person === "partner" && index === 0 && (
             <div className="picker-handoff" role="status">
@@ -168,7 +196,13 @@ export default function Home() {
           )}
 
           <article className={`match-poster ${current.palette}`}>
-            <div className="poster-art"><span>GACHI<br />PRESENTS</span><b>{current.title.slice(0, 1)}</b></div>
+            <div
+              className={`poster-art ${current.posterUrl ? "has-image" : ""}`}
+              style={current.posterUrl ? { backgroundImage: `linear-gradient(180deg, rgba(18, 24, 22, .04), rgba(18, 24, 22, .52)), url(${current.posterUrl})` } : undefined}
+            >
+              <span>{current.source === "tmdb" ? "TMDB PICK" : "GACHI PRESENTS"}</span>
+              {!current.posterUrl && <b>{current.title.slice(0, 1)}</b>}
+            </div>
             <div className="poster-copy">
               <small>{current.eyebrow}</small>
               <h1>{current.title}</h1>
@@ -198,7 +232,7 @@ export default function Home() {
           </div>
           <div className="match-why">
             <strong>왜 둘에게 잘 맞을까요?</strong>
-            <span>✓ {reasonFor(winner)}</span><span>✓ 둘 다 직접 남긴 후보</span><span>✓ 피하고 싶은 요소 없이 편안하게</span>
+            <span>✓ {reasonFor(winner)}</span><span>✓ 둘 다 직접 남긴 후보</span><span>{winner.safetyKnown ? "✓ 피하고 싶은 요소 없이 편안하게" : "ⓘ 시청 전 상세 등급을 확인해 주세요"}</span>
           </div>
           <button type="button" className="match-primary" onClick={() => setSheetTarget(winner)}>
             이 콘텐츠로 결정 <span>→</span>
@@ -209,6 +243,7 @@ export default function Home() {
             </button>
           )}
           <p className="match-count">공통 후보 {matches.length}개 · 두 사람의 선택이 겹친 순서로 보여드려요</p>
+          {catalogSource === "tmdb" && <p className="match-source">콘텐츠 정보와 포스터는 TMDB에서 제공받습니다.</p>}
           {savedTitle && (
             <div className="save-toast" role="status">
               <span>✓</span><p>“{savedTitle}”을 함께 본 목록에 저장했어요.</p><Link href="/records">목록 보기</Link>

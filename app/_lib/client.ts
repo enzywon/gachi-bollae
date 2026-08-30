@@ -3,6 +3,7 @@
 /** 브라우저에서 기록 API를 호출하는 얇은 래퍼. 서버 모듈을 import하지 않는다. */
 
 import type { RatingSheetValues } from "../_components/RatingSheet";
+import type { DemoContent } from "../_data/contents";
 import type { RecordDto, RecordListResponse, SortKey } from "./types";
 
 async function readError(response: Response): Promise<string> {
@@ -130,4 +131,10 @@ export async function fetchRecords(params: {
   const response = await fetch(`/api/records?${query.toString()}`, { cache: "no-store" });
   if (!response.ok) throw new Error(await readError(response));
   return (await response.json()) as RecordListResponse;
+}
+
+export async function fetchCatalog(): Promise<{ source: "demo" | "tmdb"; contents: DemoContent[] }> {
+  const response = await fetch("/api/catalog");
+  if (!response.ok) throw new Error(await readError(response));
+  return response.json();
 }
