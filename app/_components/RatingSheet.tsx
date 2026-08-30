@@ -104,10 +104,12 @@ export default function RatingSheet({
       }
       const first = focusable[0];
       const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
+      const active = document.activeElement;
+      const focusOutside = !active || !sheetRef.current.contains(active);
+      if (event.shiftKey && (active === first || active === sheetRef.current || focusOutside)) {
         event.preventDefault();
         last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
+      } else if (!event.shiftKey && (active === last || active === sheetRef.current || focusOutside)) {
         event.preventDefault();
         first.focus();
       }
