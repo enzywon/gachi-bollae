@@ -3,6 +3,38 @@ const TAG_BY_GENRE = new Map([
   [10765, "SF"], [10749, "로맨스"], [10764, "예능"], [10767, "예능"],
 ]);
 
+const GENRES_BY_TASTE = new Map([
+  ["추리", [9648]], ["코미디", [35]], ["드라마", [18]], ["예능", [10764, 10767]],
+  ["SF", [878, 10765]], ["로맨스", [10749]],
+]);
+
+/** @param {string[]} tastes */
+export function genreIdsFor(tastes = []) {
+  return [...new Set(tastes.flatMap((taste) => GENRES_BY_TASTE.get(taste) ?? []))];
+}
+
+/** @param {string} seed @param {number} offset */
+export function pageForSeed(seed = "", offset = 0) {
+  const hash = [...seed].reduce((value, character) => ((value * 31) + character.charCodeAt(0)) >>> 0, 0);
+  return ((hash + offset) % 5) + 1;
+}
+
+/**
+ * @param {"movie" | "tv"} mediaType
+ * @param {{ genreIds?: number[], page?: number }} options
+ */
+export function discoverPathFor(mediaType, { genreIds = [], page = 1 } = {}) {
+  const query = new URLSearchParams({
+    language: "ko-KR",
+    region: "KR",
+    sort_by: "popularity.desc",
+    include_adult: "false",
+    page: String(page),
+  });
+  if (genreIds.length > 0) query.set("with_genres", genreIds.join("|"));
+  return `/discover/${mediaType}?${query.toString()}`;
+}
+
 const PROVIDER_NAMES = new Map([
   ["Netflix", "Netflix"], ["Disney Plus", "Disney+"], ["TVING", "TVING"],
   ["Coupang Play", "Coupang Play"],

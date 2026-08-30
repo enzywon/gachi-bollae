@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import RatingSheet, { type RatingSheetValues } from "./_components/RatingSheet";
 import { CONTENTS, MOODS, TASTES, contentKeyOf, type DemoContent } from "./_data/contents";
 import { createRecord, fetchCatalog } from "./_lib/client";
@@ -62,7 +62,8 @@ export default function Home() {
   const [savedTitle, setSavedTitle] = useState("");
   const [contents, setContents] = useState<DemoContent[]>(CONTENTS);
   const [catalogSource, setCatalogSource] = useState<"demo" | "tmdb">("demo");
-  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
 
   const matchPool = useMemo(() => {
     const eligible = contents.filter((item) => item.runtime <= 60);
@@ -99,26 +100,6 @@ export default function Home() {
   const winner = resultPool[matchIndex % Math.max(resultPool.length, 1)];
   const isMutual = matches.length > 0;
 
-  useEffect(() => {
-    let active = true;
-
-    fetchCatalog()
-      .then((catalog) => {
-        if (!active) return;
-        const eligible = catalog.contents.filter((item) => item.runtime <= 60);
-        if (eligible.length >= 3) {
-          setContents(catalog.contents);
-          setCatalogSource(catalog.source);
-        }
-      })
-      .catch(() => undefined)
-      .finally(() => {
-        if (active) setCatalogLoading(false);
-      });
-
-    return () => { active = false; };
-  }, []);
-
   const reset = () => {
     setScreen("intro");
     setPerson("me");
@@ -129,6 +110,7 @@ export default function Home() {
     setSheetTarget(null);
     setSheetError(null);
     setSavedTitle("");
+    setCatalogError(null);
   };
 
   const start = () => {
@@ -155,15 +137,34 @@ export default function Home() {
     });
   };
 
-  const submitPreference = () => {
+  const submitPreference = async () => {
     if (!preferences[person].mood || preferences[person].genres.length === 0) return;
     if (person === "me") {
       setPerson("partner");
       return;
     }
-    setPerson("me");
-    setIndex(0);
-    setScreen("pick");
+
+    setCatalogLoading(true);
+    setCatalogError(null);
+    try {
+      const catalog = await fetchCatalog({
+        genres: [...new Set([...preferences.me.genres, ...preferences.partner.genres])],
+        moods: [...new Set([preferences.me.mood, preferences.partner.mood])],
+        maxRuntime: 60,
+        seed: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      });
+      const eligible = catalog.contents.filter((item) => item.runtime <= 60);
+      if (eligible.length < 3) throw new Error("오늘 조건에 맞는 후보가 부족해요.");
+      setContents(catalog.contents);
+      setCatalogSource(catalog.source);
+      setPerson("me");
+      setIndex(0);
+      setScreen("pick");
+    } catch (error) {
+      setCatalogError(error instanceof Error ? error.message : "후보를 불러오지 못했어요.");
+    } finally {
+      setCatalogLoading(false);
+    }
   };
 
   const retryPreferences = () => {
@@ -250,8 +251,8 @@ export default function Home() {
             <div className="match-tonight">
               <span>🍽 식사 중</span><span>⏱ 60분 이내</span><span>{catalogSource === "tmdb" ? "TMDB 인기 콘텐츠" : "추천 데모"}</span>
             </div>
-            <button className="match-primary" type="button" onClick={start} disabled={catalogLoading}>
-              {catalogLoading ? "오늘의 후보 불러오는 중" : "오늘 취향부터 고르기"} <span>{catalogLoading ? "…" : "→"}</span>
+            <button className="match-primary" type="button" onClick={start}>
+              오늘 취향부터 고르기 <span>→</span>
             </button>
             <p className="match-privacy">각자의 응답은 선택이 겹쳤을 때만 공개됩니다</p>
           </div>
@@ -294,9 +295,10 @@ export default function Home() {
             </div>
           </fieldset>
 
-          <button className="match-primary" type="button" disabled={!preferences[person].mood || preferences[person].genres.length === 0} onClick={submitPreference}>
-            {person === "me" ? "선택을 숨기고 화면 건네기" : "오늘의 후보 확인하기"} <span>→</span>
+          <button className="match-primary" type="button" disabled={catalogLoading || !preferences[person].mood || preferences[person].genres.length === 0} onClick={submitPreference}>
+            {person === "me" ? "선택을 숨기고 화면 건네기" : catalogLoading ? "맞춤 후보를 찾는 중…" : "오늘의 후보 확인하기"} <span>{catalogLoading ? "" : "→"}</span>
           </button>
+          {catalogError && <div className="catalog-error" role="alert"><span>{catalogError}</span><button type="button" onClick={submitPreference}>다시 시도</button></div>}
           <p className="match-privacy">취향 응답도 결과의 추천 근거로만 사용돼요</p>
         </section>
       )}

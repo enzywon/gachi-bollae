@@ -392,6 +392,8 @@ button:focus-visible { outline: 3px solid rgba(180, 113, 255, 0.8); outline-offs
 .mood-options { grid-template-columns: repeat(2, 1fr); }
 .mood-options button:last-child { grid-column: 1 / -1; }
 .match-preference .match-primary { margin-top: 8px; }
+.catalog-error { margin-top: 10px; padding: 11px 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border: 1px solid #e3c5bd; border-radius: 9px; background: #fff1ed; color: #815146; font-size: 11px; }
+.catalog-error button { flex: 0 0 auto; border: 0; background: none; color: #315c54; font-weight: 700; text-decoration: underline; cursor: pointer; }
 .picker-status { display: flex; align-items: center; justify-content: space-between; }.picker-person { display: flex; align-items: center; gap: 10px; }.picker-person .avatar { width: 42px; height: 42px; font-size: 12px; }.picker-person span { display: grid; }.picker-person small { color: #857b6e; font-size: 9px; }.picker-person strong { font-size: 15px; }.picker-count { color: #857b6e; font-size: 12px; }.picker-count strong { color: var(--red); font-size: 18px; }
 .picker-progress { height: 4px; margin: 14px 0 18px; border-radius: 999px; background: #dfd5c8; overflow: hidden; }.picker-progress span { display: block; height: 100%; background: var(--red); transition: width .25s; }
 .picker-handoff { margin-bottom: 12px; padding: 10px; border: 1px solid #e2bca5; background: #fff5e7; border-radius: 12px; text-align: center; color: #8b5a39; font-size: 11px; }
