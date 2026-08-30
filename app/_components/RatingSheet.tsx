@@ -79,32 +79,47 @@ export default function RatingSheet({
   const seasonAllowed = allowsSeason(format);
   const sheetRef = useRef<HTMLElement>(null);
 
-  /**
-   * 시트가 열려 있는 동안 뒤 페이지가 함께 스크롤되지 않게 한다.
-   * iOS 사파리는 body의 overflow: hidden을 무시하므로 위치를 고정하고 스크롤 위치를 되돌린다.
-   */
   useEffect(() => {
     const scrollY = window.scrollY;
     const { style } = document.body;
     const restore = { position: style.position, top: style.top, width: style.width };
+    const opener = document.activeElement;
 
     style.position = "fixed";
     style.top = `-${scrollY}px`;
     style.width = "100%";
+    sheetRef.current?.focus();
+
+    const trapFocus = (event: KeyboardEvent) => {
+      if (event.key !== "Tab" || !sheetRef.current) return;
+      const focusable = Array.from(
+        sheetRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+        ),
+      );
+      if (focusable.length === 0) {
+        event.preventDefault();
+        sheetRef.current.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", trapFocus);
 
     return () => {
+      document.removeEventListener("keydown", trapFocus);
       style.position = restore.position;
       style.top = restore.top;
       style.width = restore.width;
       window.scrollTo(0, scrollY);
-    };
-  }, []);
-
-  /** 시트를 열면 초점을 옮기고 닫을 때 원래 자리로 돌려준다. */
-  useEffect(() => {
-    const opener = document.activeElement;
-    sheetRef.current?.focus();
-    return () => {
       if (opener instanceof HTMLElement) opener.focus();
     };
   }, []);
