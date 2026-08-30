@@ -3,12 +3,14 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import RatingSheet, { type RatingSheetValues } from "./_components/RatingSheet";
-import { CONTENTS, contentKeyOf, type DemoContent } from "./_data/contents";
+import { CONTENTS, MOODS, TASTES, contentKeyOf, type DemoContent } from "./_data/contents";
 import { createRecord, fetchCatalog } from "./_lib/client";
 
 type Person = "me" | "partner";
 type ChoiceMap = Record<Person, number[]>;
-type Screen = "intro" | "pick" | "match";
+type Preference = { mood: string; genres: string[] };
+type PreferenceMap = Record<Person, Preference>;
+type Screen = "intro" | "preference" | "pick" | "match";
 
 const PEOPLE: Record<Person, { name: string; initial: string }> = {
   me: { name: "나", initial: "나" },
@@ -20,15 +22,25 @@ const DEMO_MATCH_POOL = CONTENTS.filter(
 );
 
 function reasonFor(item: DemoContent) {
-  if (item.tags.includes("코미디")) return "둘 다 좋아할 가벼운 웃음";
+  if (item.tags.includes("코미디")) return "가볍게 웃기 좋은 코미디";
   if (item.tags.includes("추리")) return "대화하며 보기 좋은 추리";
-  return "편안한 분위기의 공통 취향";
+  return "함께 보기 부담 없는 분위기";
 }
 
-function recommendationReasons(item: DemoContent, mutual: boolean) {
+function preferenceReasonFor(item: DemoContent, preferences: PreferenceMap) {
+  const selectedMoods = [...new Set([preferences.me.mood, preferences.partner.mood].filter(Boolean))];
+  const matchedMood = selectedMoods.find((mood) => item.moods.includes(mood));
+  if (matchedMood) return `오늘 고른 ‘${matchedMood}’ 분위기와 잘 맞아요`;
+
+  const selectedGenres = [...new Set([...preferences.me.genres, ...preferences.partner.genres])];
+  const matchedGenre = selectedGenres.find((genre) => item.tags.includes(genre));
+  return matchedGenre ? `오늘 고른 ${matchedGenre} 취향을 반영했어요` : reasonFor(item);
+}
+
+function recommendationReasons(item: DemoContent, mutual: boolean, preferences: PreferenceMap) {
   return [
     mutual ? "두 사람 모두 직접 고른 공통 후보" : "두 사람의 선택과 가장 가까운 후보",
-    reasonFor(item),
+    preferenceReasonFor(item, preferences),
     `${item.runtime}분 안에 부담 없이 시청 가능`,
     item.safetyKnown ? "피하고 싶은 요소를 확인한 후보" : "상세 등급은 시청 전에 확인 필요",
   ];
@@ -40,6 +52,10 @@ export default function Home() {
   const [index, setIndex] = useState(0);
   const [matchIndex, setMatchIndex] = useState(0);
   const [choices, setChoices] = useState<ChoiceMap>({ me: [], partner: [] });
+  const [preferences, setPreferences] = useState<PreferenceMap>({
+    me: { mood: "", genres: [] },
+    partner: { mood: "", genres: [] },
+  });
   const [sheetTarget, setSheetTarget] = useState<DemoContent | null>(null);
   const [sheetSubmitting, setSheetSubmitting] = useState(false);
   const [sheetError, setSheetError] = useState<string | null>(null);
@@ -50,8 +66,14 @@ export default function Home() {
 
   const matchPool = useMemo(() => {
     const eligible = contents.filter((item) => item.runtime <= 60);
-    return eligible.length >= 3 ? eligible : DEMO_MATCH_POOL;
-  }, [contents]);
+    const source = eligible.length >= 3 ? eligible : DEMO_MATCH_POOL;
+    const selectedMoods = [preferences.me.mood, preferences.partner.mood].filter(Boolean);
+    const selectedGenres = [...preferences.me.genres, ...preferences.partner.genres];
+    const score = (item: DemoContent) =>
+      item.moods.reduce((sum, mood) => sum + selectedMoods.filter((selected) => selected === mood).length * 3, 0) +
+      item.tags.reduce((sum, tag) => sum + selectedGenres.filter((selected) => selected === tag).length * 2, 0);
+    return [...source].sort((a, b) => score(b) - score(a) || a.runtime - b.runtime).slice(0, 8);
+  }, [contents, preferences]);
 
   const current = matchPool[index];
   const matches = useMemo(
@@ -102,6 +124,7 @@ export default function Home() {
     setIndex(0);
     setMatchIndex(0);
     setChoices({ me: [], partner: [] });
+    setPreferences({ me: { mood: "", genres: [] }, partner: { mood: "", genres: [] } });
     setSheetTarget(null);
     setSheetError(null);
     setSavedTitle("");
@@ -109,10 +132,36 @@ export default function Home() {
 
   const start = () => {
     setChoices({ me: [], partner: [] });
+    setPreferences({ me: { mood: "", genres: [] }, partner: { mood: "", genres: [] } });
     setPerson("me");
     setIndex(0);
     setMatchIndex(0);
     setSavedTitle("");
+    setScreen("preference");
+  };
+
+  const setMood = (mood: string) => {
+    setPreferences((value) => ({ ...value, [person]: { ...value[person], mood } }));
+  };
+
+  const toggleGenre = (genre: string) => {
+    setPreferences((value) => {
+      const selected = value[person].genres;
+      const genres = selected.includes(genre)
+        ? selected.filter((item) => item !== genre)
+        : selected.length < 2 ? [...selected, genre] : selected;
+      return { ...value, [person]: { ...value[person], genres } };
+    });
+  };
+
+  const submitPreference = () => {
+    if (!preferences[person].mood || preferences[person].genres.length === 0) return;
+    if (person === "me") {
+      setPerson("partner");
+      return;
+    }
+    setPerson("me");
+    setIndex(0);
     setScreen("pick");
   };
 
@@ -154,7 +203,7 @@ export default function Home() {
           contentRuntime: sheetTarget.runtime,
           posterPalette: sheetTarget.palette,
         },
-        { watchMode: "together", pickedContext: "함께 고르기", pickedMood: null },
+        { watchMode: "together", pickedContext: "함께 고르기", pickedMood: [...new Set([preferences.me.mood, preferences.partner.mood])].join(" · ") },
         values,
       );
       setSavedTitle(sheetTarget.title);
@@ -192,14 +241,53 @@ export default function Home() {
               <span>🍽 식사 중</span><span>⏱ 60분 이내</span><span>{catalogSource === "tmdb" ? "TMDB 인기 콘텐츠" : "추천 데모"}</span>
             </div>
             <button className="match-primary" type="button" onClick={start} disabled={catalogLoading}>
-              {catalogLoading ? "오늘의 후보 불러오는 중" : "각자 고르기 시작"} <span>{catalogLoading ? "…" : "→"}</span>
+              {catalogLoading ? "오늘의 후보 불러오는 중" : "오늘 취향부터 고르기"} <span>{catalogLoading ? "…" : "→"}</span>
             </button>
             <p className="match-privacy">각자의 응답은 선택이 겹쳤을 때만 공개됩니다</p>
           </div>
 
           <div className="match-how" aria-label="함께 고르기 순서">
-            <span><b>01</b>각자 선택</span><span><b>02</b>공통 후보 확인</span><span><b>03</b>함께 결정</span>
+            <span><b>01</b>오늘 취향</span><span><b>02</b>각자 선택</span><span><b>03</b>함께 결정</span>
           </div>
+        </section>
+      )}
+
+      {screen === "preference" && (
+        <section className="match-preference">
+          <div className="picker-status">
+            <div className="picker-person">
+              <i className={`avatar ${person}`}>{PEOPLE[person].initial}</i>
+              <span><small>오늘의 취향을 고르는 사람</small><strong>{PEOPLE[person].name}</strong></span>
+            </div>
+            <div className="preference-step">{person === "me" ? "1" : "2"} / 2</div>
+          </div>
+
+          {person === "partner" && <div className="picker-handoff">함께 보는 사람에게 화면을 건네주세요 · 앞선 응답은 보이지 않아요</div>}
+
+          <div className="preference-heading">
+            <span className="match-kicker">오늘은 뭐가 당기나요?</span>
+            <h1>지금 보고 싶은<br />느낌을 알려주세요.</h1>
+            <p>매일 달라지는 취향을 오늘의 추천에 먼저 반영해요.</p>
+          </div>
+
+          <fieldset className="preference-field">
+            <legend>분위기 <small>하나만 선택</small></legend>
+            <div className="preference-options mood-options">
+              {MOODS.map((mood) => <button type="button" key={mood} className={preferences[person].mood === mood ? "active" : ""} aria-pressed={preferences[person].mood === mood} onClick={() => setMood(mood)}>{mood}</button>)}
+            </div>
+          </fieldset>
+
+          <fieldset className="preference-field">
+            <legend>장르 <small>최대 2개</small></legend>
+            <div className="preference-options">
+              {TASTES.map((genre) => <button type="button" key={genre} className={preferences[person].genres.includes(genre) ? "active" : ""} aria-pressed={preferences[person].genres.includes(genre)} onClick={() => toggleGenre(genre)}>{genre}</button>)}
+            </div>
+          </fieldset>
+
+          <button className="match-primary" type="button" disabled={!preferences[person].mood || preferences[person].genres.length === 0} onClick={submitPreference}>
+            {person === "me" ? "선택을 숨기고 화면 건네기" : "오늘의 후보 확인하기"} <span>→</span>
+          </button>
+          <p className="match-privacy">취향 응답도 결과의 추천 근거로만 사용돼요</p>
         </section>
       )}
 
@@ -233,7 +321,7 @@ export default function Home() {
               <h1>{current.title}</h1>
               <div className="poster-meta"><span>{current.provider}</span><span>{current.runtime}분</span><span>{current.format}</span></div>
               <p>{current.synopsis}</p>
-              <div className="poster-reasons"><span>✦ {reasonFor(current)}</span><span>✓ 60분 안에 시청 가능</span></div>
+              <div className="poster-reasons"><span>✦ {preferenceReasonFor(current, preferences)}</span><span>✓ 60분 안에 시청 가능</span></div>
             </div>
           </article>
 
@@ -258,7 +346,7 @@ export default function Home() {
           </div>
           <div className="match-why">
             <strong>이 후보를 추천하는 이유</strong>
-            {recommendationReasons(winner, isMutual).map((reason, reasonIndex) => <span key={reason}> {reasonIndex === 3 && !winner.safetyKnown ? "ⓘ" : "✓"} {reason}</span>)}
+            {recommendationReasons(winner, isMutual, preferences).map((reason, reasonIndex) => <span key={reason}> {reasonIndex === 3 && !winner.safetyKnown ? "ⓘ" : "✓"} {reason}</span>)}
           </div>
           <button type="button" className="match-primary" onClick={() => setSheetTarget(winner)}>
             이 콘텐츠로 결정 <span>→</span>

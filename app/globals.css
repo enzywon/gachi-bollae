@@ -357,7 +357,7 @@ button:focus-visible { outline: 3px solid rgba(180, 113, 255, 0.8); outline-offs
 .match-brand { font-size: 21px; font-weight: 850; letter-spacing: -.07em; display: flex; align-items: center; gap: 8px; }
 .match-brand span { width: 19px; height: 19px; display: grid; place-items: center; border-radius: 7px 12px 10px 12px; background: var(--red); color: transparent; transform: rotate(-9deg); }
 .match-history { padding: 9px 13px; border: 1px solid #d7cdbf; border-radius: 999px; font-size: 12px; }
-.match-intro, .match-pick, .match-result { width: min(100% - 32px, 520px); margin: 0 auto; position: relative; z-index: 2; }
+.match-intro, .match-preference, .match-pick, .match-result { width: min(100% - 32px, 520px); margin: 0 auto; position: relative; z-index: 2; }
 .match-intro { padding: 45px 0 80px; text-align: center; }
 .match-kicker { color: var(--red); font-size: 11px; font-weight: 900; letter-spacing: .2em; }
 .match-intro > h1, .match-result > h1 { margin: 15px 0; font-size: clamp(40px, 7vw, 62px); line-height: 1.08; letter-spacing: -.07em; }
@@ -378,6 +378,20 @@ button:focus-visible { outline: 3px solid rgba(180, 113, 255, 0.8); outline-offs
 .match-primary span { margin-left: 7px; }.match-privacy { font-size: 10px !important; color: #8a8073 !important; margin-top: 13px !important; }
 .match-how { display: flex; justify-content: center; gap: 24px; margin-top: 30px; color: #756c60; font-size: 10px; }.match-how span { display: grid; gap: 5px; }.match-how b { color: var(--red); font-size: 9px; }
 .match-pick { padding: 16px 0 60px; }
+.match-preference { padding: 28px 0 64px; }
+.preference-step { color: #71807a; font-size: 12px; font-weight: 650; }
+.preference-heading { margin: 34px 0 30px; }
+.preference-heading h1 { margin: 10px 0 10px; font-size: 38px; line-height: 1.12; letter-spacing: -.055em; font-weight: 680; }
+.preference-heading p { margin: 0; color: #67756f; font-size: 13px; line-height: 1.6; }
+.preference-field { min-width: 0; margin: 0 0 24px; padding: 0; border: 0; }
+.preference-field legend { width: 100%; margin-bottom: 11px; color: #2c3c37; font-size: 13px; font-weight: 700; }
+.preference-field legend small { margin-left: 7px; color: #7b8782; font-size: 9px; font-weight: 500; }
+.preference-options { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.preference-options button { min-height: 48px; padding: 8px; border: 1px solid #d6ddd9; border-radius: 9px; background: rgba(255,255,255,.68); color: #52615b; cursor: pointer; font-size: 12px; }
+.preference-options button.active { border-color: #315c54; background: #315c54; color: #fff; font-weight: 700; }
+.mood-options { grid-template-columns: repeat(2, 1fr); }
+.mood-options button:last-child { grid-column: 1 / -1; }
+.match-preference .match-primary { margin-top: 8px; }
 .picker-status { display: flex; align-items: center; justify-content: space-between; }.picker-person { display: flex; align-items: center; gap: 10px; }.picker-person .avatar { width: 42px; height: 42px; font-size: 12px; }.picker-person span { display: grid; }.picker-person small { color: #857b6e; font-size: 9px; }.picker-person strong { font-size: 15px; }.picker-count { color: #857b6e; font-size: 12px; }.picker-count strong { color: var(--red); font-size: 18px; }
 .picker-progress { height: 4px; margin: 14px 0 18px; border-radius: 999px; background: #dfd5c8; overflow: hidden; }.picker-progress span { display: block; height: 100%; background: var(--red); transition: width .25s; }
 .picker-handoff { margin-bottom: 12px; padding: 10px; border: 1px solid #e2bca5; background: #fff5e7; border-radius: 12px; text-align: center; color: #8b5a39; font-size: 11px; }
@@ -509,4 +523,7 @@ button:focus-visible { outline: 3px solid rgba(180, 113, 255, 0.8); outline-offs
   .records-toolbar .toolbar-group:last-child { grid-column: 1 / -1; }
   .records-app .record-card-head { grid-template-columns: 52px 1fr 16px; gap: 11px; padding: 14px; }
   .records-app .record-poster { width: 52px; height: 70px; }
+  .match-preference { padding-top: 20px; }
+  .preference-heading { margin-top: 28px; }
+  .preference-heading h1 { font-size: 34px; }
 }
