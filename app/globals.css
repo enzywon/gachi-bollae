@@ -19,10 +19,9 @@
 html { background: var(--bg); scroll-behavior: smooth; }
 body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--font-geist-sans), Pretendard, "Noto Sans KR", Arial, sans-serif; }
 button { font: inherit; }
-button:focus-visible { outline: 3px solid rgba(180, 113, 255, 0.8); outline-offset: 3px; }
 button, a { -webkit-tap-highlight-color: rgba(180, 113, 255, .2); }
+button:focus-visible { outline: 3px solid rgba(180, 113, 255, 0.8); outline-offset: 3px; }
 
-/* overflow는 x축만 clip한다. hidden으로 두면 스크롤 컨테이너가 되어 하위의 position: sticky가 죽는다. */
 .app-shell { min-height: 100vh; min-height: 100dvh; position: relative; overflow-x: clip; background: radial-gradient(circle at 50% 34%, rgba(180, 86, 237, 0.18), transparent 34%), radial-gradient(circle at 80% 18%, rgba(255, 117, 163, .08), transparent 24%), linear-gradient(180deg, #0d0b18 0%, #100d1e 52%, #090812 100%); }
 .app-shell::before { content: ""; position: fixed; inset: 0; pointer-events: none; opacity: .28; background-image: linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.018) 1px, transparent 1px); background-size: 48px 48px; mask-image: linear-gradient(to bottom, black, transparent 78%); }
 .ambient { position: fixed; width: 26vw; height: 76vh; top: 9vh; filter: blur(48px); opacity: .22; pointer-events: none; border-radius: 50%; }
@@ -148,6 +147,7 @@ button, a { -webkit-tap-highlight-color: rgba(180, 113, 255, .2); }
 .result-topline span { color: var(--muted); font-size: 10px; }
 .result-topline b { color: #cda2f5; font-size: 10px; border: 1px solid rgba(184,114,248,.25); background: rgba(135,57,207,.12); padding: 5px 7px; border-radius: 999px; }
 .result-body h2 { margin: 10px 0 10px; font-size: 22px; letter-spacing: -.035em; }
+.rewatch-note { margin: -2px 0 10px; color: #d7b3f8; font-size: 10px; line-height: 1.5; }
 .metadata { display: flex; flex-wrap: wrap; gap: 6px; }
 .metadata span { background: rgba(255,255,255,.05); color: #aeb5c7; border-radius: 6px; padding: 5px 7px; font-size: 9px; }
 .synopsis { color: #a4abbd; font-size: 12px; line-height: 1.65; min-height: 59px; margin: 15px 0; }
@@ -181,9 +181,7 @@ button, a { -webkit-tap-highlight-color: rgba(180, 113, 255, .2); }
 
 /* 평가 시트 */
 .sheet-backdrop { position: fixed; inset: 0; z-index: 40; background: rgba(5,4,12,.72); backdrop-filter: blur(6px); display: flex; align-items: flex-end; justify-content: center; padding: 0; overscroll-behavior: contain; animation: page-in .2s ease both; }
-/* vh는 주소창이 숨겨진 최대 높이라 iOS에서 시트 상단이 화면 밖으로 밀린다. dvh를 쓴다. */
-.rating-sheet { width: min(560px, 100%); max-height: 92dvh; overflow-y: auto; overscroll-behavior: contain; background: var(--surface-strong); border: 1px solid var(--line-strong); border-radius: 26px 26px 0 0; padding: 24px 22px 20px; box-shadow: 0 -20px 70px rgba(0,0,0,.55); }
-.rating-sheet:focus-visible { outline: none; }
+.rating-sheet { width: min(560px, 100%); max-height: 92vh; max-height: 92dvh; overflow-y: auto; overscroll-behavior: contain; background: var(--surface-strong); border: 1px solid var(--line-strong); border-radius: 26px 26px 0 0; padding: 24px 22px 20px; box-shadow: 0 -20px 70px rgba(0,0,0,.55); }
 .sheet-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
 .sheet-eyebrow { color: #ae79e8; font-size: 10px; font-weight: 750; letter-spacing: .18em; }
 .sheet-header h2 { margin: 6px 0 0; font-size: 23px; letter-spacing: -.035em; }
@@ -199,7 +197,6 @@ button, a { -webkit-tap-highlight-color: rgba(180, 113, 255, .2); }
 .field-label b { color: var(--muted-2); font-weight: 500; font-size: 11px; }
 .field-label b.over { color: #ff8ba2; }
 .field-hint { margin: 8px 0 0; color: var(--muted-2); font-size: 11px; line-height: 1.5; }
-/* iOS는 16px 미만 입력에 포커스하면 페이지를 강제로 확대하고 되돌리지 않는다. */
 .sheet-field input, .sheet-field textarea { width: 100%; border: 1px solid var(--line); background: rgba(0,0,0,.18); color: var(--text); border-radius: 12px; padding: 12px 13px; font: inherit; font-size: 16px; resize: vertical; }
 .sheet-field input:focus-visible, .sheet-field textarea:focus-visible { outline: 2px solid rgba(180,113,255,.8); outline-offset: 1px; border-color: rgba(180,113,255,.6); }
 .star-row { display: flex; align-items: center; gap: 4px; }
@@ -273,12 +270,9 @@ button, a { -webkit-tap-highlight-color: rgba(180, 113, 255, .2); }
 }
 
 @media (max-width: 680px) {
-  /* 좁은 화면에서 상단바가 넘치면 overflow-x: clip 때문에 스크롤 없이 잘려 나간다. */
-  .topbar { height: 64px; padding-inline: 16px; gap: 10px; }
+  .topbar { height: calc(64px + env(safe-area-inset-top)); padding-top: env(safe-area-inset-top); padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); gap: 10px; }
   .brand { font-size: 18px; min-width: 0; }
-  .brand i { width: 22px; height: 22px; margin-right: 5px; }
   .header-meta { gap: 8px; min-width: 0; }
-  /* 진행 상황은 바로 아래 progress-track이 대신 알려준다. */
   .step-label { display: none; }
   .reset-button, .edit-button { padding: 10px 12px; font-size: 12px; flex-shrink: 0; white-space: nowrap; }
   .content-wrap { width: min(100% - 28px, 1180px); }
@@ -308,13 +302,6 @@ button, a { -webkit-tap-highlight-color: rgba(180, 113, 255, .2); }
   .selection-banner { grid-template-columns: 34px 1fr; }
   .selection-banner button { grid-column: 1 / -1; }
   .result-footer, .site-footer { flex-direction: column; align-items: flex-start; }
-  /* 3열 정렬용으로 잡아둔 최소 높이는 1열에서는 빈 공간만 만든다. */
-  .synopsis, .reason-list { min-height: 0; }
-  /* 데스크톱 기준 8~10px 글자는 폰에서 읽기 어렵다. */
-  .poster-title small { font-size: 10px; }
-  .result-topline span, .result-topline b, .reason-list span { font-size: 12px; }
-  .metadata span, .record-meta span { font-size: 11px; }
-  .site-footer { font-size: 11px; }
 }
 
 @media (max-width: 900px) {
@@ -326,7 +313,7 @@ button, a { -webkit-tap-highlight-color: rgba(180, 113, 255, .2); }
   .selection-banner button { grid-column: 1 / -1; }
   .save-toast { grid-template-columns: 30px 1fr auto; }
   .save-toast a { grid-column: 1 / -1; text-align: center; }
-  .rating-sheet { border-radius: 22px 22px 0 0; padding: 20px 16px 16px; max-height: 94dvh; }
+  .rating-sheet { border-radius: 22px 22px 0 0; padding: 20px 16px 16px; max-height: 94vh; max-height: 94dvh; }
   .sheet-grid { grid-template-columns: 1fr; }
   .star-button { width: 40px; height: 40px; font-size: 25px; }
   .record-card-head { grid-template-columns: 48px 1fr 18px; gap: 12px; padding: 16px; }
@@ -337,25 +324,11 @@ button, a { -webkit-tap-highlight-color: rgba(180, 113, 255, .2); }
   .unrated-list li { flex-direction: column; align-items: stretch; }
 }
 
-/* 손가락으로 누르는 기기에서는 작은 버튼을 44px까지 키운다. */
 @media (pointer: coarse) {
-  .chip,
-  .back-button,
-  .record-link-button,
-  .reaction-row button,
-  .selection-banner button,
-  .unrated-list button,
-  .record-detail-actions button,
-  .empty-state button,
-  .result-footer button,
-  .save-toast > button { min-height: 44px; }
-  .record-detail-actions button, .unrated-list button { padding-block: 10px; font-size: 12px; }
-  .reaction-row button { font-size: 12px; }
-  .save-toast > button { min-width: 44px; }
+  .chip, .back-button, .record-link-button, .reaction-row button, .selection-banner button, .unrated-list button, .record-detail-actions button, .empty-state button, .result-footer button, .save-toast > button { min-height: 44px; }
   .sheet-close { width: 44px; height: 44px; }
 }
 
-/* 터치 기기에서는 hover 상태가 탭 이후에도 남아 눌린 것처럼 보인다. */
 @media (hover: none) {
   .mode-button:hover, .context-card:hover, .result-card:hover, .next-button:hover:not(:disabled) { transform: none; }
 }
