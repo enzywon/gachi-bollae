@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import RatingSheet, { type RatingSheetValues } from "./_components/RatingSheet";
 import { CONTENTS, MOODS, TASTES, contentKeyOf, type DemoContent } from "./_data/contents";
 import { createRecord, fetchCatalog } from "./_lib/client";
@@ -64,6 +64,7 @@ export default function Home() {
   const [catalogSource, setCatalogSource] = useState<"demo" | "tmdb">("demo");
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
+  const catalogRequestRef = useRef(0);
 
   const matchPool = useMemo(() => {
     const eligible = contents.filter((item) => item.runtime <= 60);
@@ -101,6 +102,7 @@ export default function Home() {
   const isMutual = matches.length > 0;
 
   const reset = () => {
+    catalogRequestRef.current += 1;
     setScreen("intro");
     setPerson("me");
     setIndex(0);
@@ -114,6 +116,7 @@ export default function Home() {
   };
 
   const start = () => {
+    catalogRequestRef.current += 1;
     setChoices({ me: [], partner: [] });
     setPreferences({ me: { mood: "", genres: [] }, partner: { mood: "", genres: [] } });
     setPerson("me");
@@ -146,6 +149,7 @@ export default function Home() {
 
     setCatalogLoading(true);
     setCatalogError(null);
+    const requestId = ++catalogRequestRef.current;
     try {
       const catalog = await fetchCatalog({
         genres: [...new Set([...preferences.me.genres, ...preferences.partner.genres])],
@@ -153,6 +157,7 @@ export default function Home() {
         maxRuntime: 60,
         seed: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       });
+      if (requestId !== catalogRequestRef.current) return;
       const eligible = catalog.contents.filter((item) => item.runtime <= 60);
       if (eligible.length < 3) throw new Error("오늘 조건에 맞는 후보가 부족해요.");
       setContents(catalog.contents);
@@ -161,13 +166,15 @@ export default function Home() {
       setIndex(0);
       setScreen("pick");
     } catch (error) {
+      if (requestId !== catalogRequestRef.current) return;
       setCatalogError(error instanceof Error ? error.message : "후보를 불러오지 못했어요.");
     } finally {
-      setCatalogLoading(false);
+      if (requestId === catalogRequestRef.current) setCatalogLoading(false);
     }
   };
 
   const retryPreferences = () => {
+    catalogRequestRef.current += 1;
     setChoices({ me: [], partner: [] });
     setPreferences({ me: { mood: "", genres: [] }, partner: { mood: "", genres: [] } });
     setPerson("me");
