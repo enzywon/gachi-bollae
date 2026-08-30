@@ -61,7 +61,7 @@ export default function Home() {
   const [sheetError, setSheetError] = useState<string | null>(null);
   const [savedTitle, setSavedTitle] = useState("");
   const [contents, setContents] = useState<DemoContent[]>(CONTENTS);
-  const [catalogSource, setCatalogSource] = useState<"demo" | "tmdb">("demo");
+  const [catalogSource, setCatalogSource] = useState<"unknown" | "demo" | "tmdb">("unknown");
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const catalogRequestRef = useRef(0);
@@ -114,6 +114,7 @@ export default function Home() {
     setSheetError(null);
     setSavedTitle("");
     setCatalogError(null);
+    setCatalogSource("unknown");
   };
 
   const start = () => {
@@ -259,7 +260,7 @@ export default function Home() {
               <div><i className="avatar partner">함</i><strong>함께 보는 사람</strong><small>준비 완료</small></div>
             </div>
             <div className="match-tonight">
-              <span>🍽 식사 중</span><span>⏱ 60분 이내</span><span>{catalogSource === "tmdb" ? "TMDB 인기 콘텐츠" : "추천 데모"}</span>
+              <span>🍽 식사 중</span><span>⏱ 60분 이내</span><span>{catalogSource === "tmdb" ? "TMDB 맞춤 후보" : catalogSource === "demo" ? "추천 데모" : "취향 맞춤 후보"}</span>
             </div>
             <button className="match-primary" type="button" onClick={start}>
               오늘 취향부터 고르기 <span>→</span>
