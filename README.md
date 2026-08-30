@@ -20,7 +20,7 @@
 
 추천으로 끝내지 않고 선택한 콘텐츠와 감상을 기록합니다. 남긴 별점은 다음 추천의 태그 가중치에 반영되고, 이미 본 작품은 새 후보에서 자동으로 제외됩니다.
 
-> 현재는 제품 흐름과 기술 구조를 검증하는 프로토타입입니다. 콘텐츠는 프로젝트를 위해 만든 데모 데이터 6건을 사용하며, 실제 OTT 카탈로그와 사용자 계정은 아직 연동하지 않았습니다.
+> 현재는 제품 흐름과 기술 구조를 검증하는 프로토타입입니다. TMDB 토큰이 있으면 인기 영화·TV 콘텐츠를 불러오고, 연결되지 않으면 프로젝트의 데모 데이터 6건으로 동작합니다. 실제 사용자 계정은 아직 연동하지 않았습니다.
 
 ## 핵심 경험
 
@@ -99,13 +99,14 @@ npm run dev
 ```dotenv
 DATABASE_URL=postgresql://<user>:<password>@<host>/<database>?sslmode=require
 DATABASE_URL_UNPOOLED=postgresql://<user>:<password>@<host>/<database>?sslmode=require
+TMDB_API_TOKEN=<TMDB API Read Access Token>
 ```
 
 ```bash
 npm run db:migrate
 ```
 
-`DATABASE_URL_UNPOOLED`은 마이그레이션용 직결 주소이며, 없으면 `DATABASE_URL`을 사용합니다. `.env*` 파일은 Git에서 제외됩니다.
+`DATABASE_URL_UNPOOLED`은 마이그레이션용 직결 주소이며, 없으면 `DATABASE_URL`을 사용합니다. `TMDB_API_TOKEN`은 TMDB 계정의 API 설정에서 발급한 Read Access Token이며 서버에서만 사용합니다. 토큰이 없거나 호출이 실패하면 데모 콘텐츠로 자동 전환합니다. `.env*` 파일은 Git에서 제외됩니다.
 
 ### 검증 명령어
 

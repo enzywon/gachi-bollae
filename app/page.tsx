@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import RatingSheet, { type RatingSheetValues } from "./_components/RatingSheet";
 import { AVOIDS, CONTENTS, CONTEXTS, MOODS, PROVIDERS, TASTES, contentKeyOf, type DemoContent } from "./_data/contents";
-import { createRecord, fetchRecords } from "./_lib/client";
+import { createRecord, fetchCatalog, fetchRecords } from "./_lib/client";
 import {
   historyFromRecords,
   historyPointsFor,
@@ -25,8 +25,6 @@ const MY_TASTE_POINTS = 9;
 const SHARED_TASTE_POINTS = 8;
 const PARTNER_TASTE_POINTS = 4;
 const HISTORY_TAG_POINTS = 5;
-const MAX_TAG_MATCHES = Math.max(...CONTENTS.map((item) => item.tags.length));
-
 type RecommendationHistory = {
   watchedContentKeys: string[];
   tagWeights: Record<string, number>;
@@ -66,6 +64,8 @@ export default function Home() {
   const [selectedContent, setSelectedContent] = useState<DemoContent | null>(null);
   const [refreshSeed, setRefreshSeed] = useState(0);
   const [history, setHistory] = useState<RecommendationHistory>(EMPTY_HISTORY);
+  const [contents, setContents] = useState<DemoContent[]>(CONTENTS);
+  const [catalogSource, setCatalogSource] = useState<"demo" | "tmdb">("demo");
   const historyRequestGeneration = useRef(0);
 
   // 기록과 평가 상태
@@ -77,12 +77,25 @@ export default function Home() {
 
   useEffect(() => {
     let active = true;
+    fetchCatalog()
+      .then((catalog) => {
+        if (active) {
+          setContents(catalog.contents);
+          setCatalogSource(catalog.source);
+        }
+      })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
     const requestGeneration = historyRequestGeneration.current;
 
     fetchRecords({ sort: "recent", format: "all", status: "all" })
       .then((data) => {
         if (active && requestGeneration === historyRequestGeneration.current) {
-          setHistory(historyFromRecords(data, CONTENTS, contentKeyOf));
+          setHistory(historyFromRecords(data, contents, contentKeyOf));
         }
       })
       // 추천은 저장소가 없어도 동작해야 한다. 기록 조회 실패 시 기존 추천으로 저하한다.
@@ -91,13 +104,14 @@ export default function Home() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [contents]);
 
   const toggleList = (value: string, list: string[], setter: (next: string[]) => void) => {
     setter(list.includes(value) ? list.filter((item) => item !== value) : [...list, value]);
   };
 
   const recommendations = useMemo(() => {
+    const maxTagMatches = Math.max(1, ...contents.map((item) => item.tags.length));
     const maxRuntime = duration === "30분 이내" ? 30 : duration === "60분 이내" ? 60 : 999;
     const countMatches = (tastes: string[], item: DemoContent) =>
       tastes.filter((taste) => item.tags.includes(taste)).length;
@@ -119,7 +133,7 @@ export default function Home() {
     };
 
     // 선택한 조건으로 받을 수 있는 최고 점수. 적합도의 분모가 된다.
-    const cap = (tastes: string[]) => Math.min(tastes.length, MAX_TAG_MATCHES);
+    const cap = (tastes: string[]) => Math.min(tastes.length, maxTagMatches);
     let bestPossible = CONTEXT_POINTS + MOOD_POINTS + cap(myTastes) * MY_TASTE_POINTS;
     if (mode === "together") {
       bestPossible +=
@@ -128,7 +142,7 @@ export default function Home() {
     }
     const historyCeiling = Math.max(
       0,
-      ...CONTENTS.map((item) =>
+      ...contents.map((item) =>
         historyPointsFor(
           item,
           Object.fromEntries(Object.entries(history.tagWeights).map(([tag, weight]) => [tag, Math.max(0, weight)])),
@@ -138,11 +152,11 @@ export default function Home() {
     );
     bestPossible += historyCeiling;
 
-    const eligible = CONTENTS.filter((item) => {
+    const eligible = contents.filter((item) => {
       const durationOkay = item.runtime <= maxRuntime;
       const formatOkay = format === "상관없음" || item.format === format;
       const providerOkay = provider === "상관없음" || item.provider === provider;
-      const safe = avoids.every((avoid) => !item.avoid.includes(avoid));
+      const safe = avoids.length === 0 || (item.safetyKnown && avoids.every((avoid) => !item.avoid.includes(avoid)));
       return durationOkay && formatOkay && providerOkay && safe;
     }).sort((a, b) => score(b) - score(a));
 
@@ -154,7 +168,7 @@ export default function Home() {
         fit: Math.max(0, Math.min(100, Math.round((score(item) / bestPossible) * 100))),
       }))
     );
-  }, [avoids, context, duration, format, history, mode, mood, myTastes, partnerTastes, provider, refreshSeed]);
+  }, [avoids, contents, context, duration, format, history, mode, mood, myTastes, partnerTastes, provider, refreshSeed]);
 
   const reset = () => {
     setMode(null);
@@ -497,7 +511,7 @@ export default function Home() {
                 const reasons = matchedReasons.length > 0 ? matchedReasons : ["선택한 필수 조건을 모두 만족해요"];
                 return (
                   <article key={item.id} className={`result-card ${reaction ? `reacted-${reaction}` : ""}`}>
-                    <div className={`demo-poster ${item.palette}`}>
+                    <div className={`demo-poster ${item.palette} ${item.posterUrl ? "has-image" : ""}`} style={item.posterUrl ? { backgroundImage: `linear-gradient(180deg, transparent 42%, rgba(4,5,12,.92)), url(${item.posterUrl})` } : undefined}>
                       <span className="rank">0{index + 1}</span>
                       <div className="poster-orbit" />
                       <div className="poster-title"><small>GACHI BOLLAE DEMO PICK</small><strong>{item.title}</strong></div>
@@ -538,7 +552,7 @@ export default function Home() {
               <p>마음에 드는 게 없나요? 거절한 콘텐츠를 제외하고 다시 찾아볼게요.</p>
               <button type="button" onClick={() => { setReactions({}); setSelectedContent(null); setRefreshSeed((value) => value + 3); }}>↻ 다른 3개 보기</button>
             </div>}
-            <p className="demo-notice">현재 화면은 추천 경험 검증을 위한 데모입니다. 정식 서비스에서는 TMDB 기반 콘텐츠와 실시간 시청처 정보를 제공합니다.</p>
+            <p className="demo-notice">{catalogSource === "tmdb" ? "콘텐츠 정보와 포스터는 TMDB에서 제공받으며, 시청 가능 여부는 각 서비스에서 다시 확인해 주세요." : "TMDB 연결이 없어 프로젝트의 데모 콘텐츠로 추천하고 있어요."}</p>
           </section>
         )}
       </div>
