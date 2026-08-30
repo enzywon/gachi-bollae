@@ -184,9 +184,9 @@ export default function RecordsPage() {
           </div>
 
           <div className="records-overview" aria-label="기록 요약">
-            <div><strong>{data?.totalRecords ?? "—"}</strong><span>전체 기록</span></div>
-            <div><strong>{groups.length || "—"}</strong><span>함께 본 작품</span></div>
-            <div><strong>{unrated.length}</strong><span>남길 평가</span></div>
+            <div><strong>{data ? data.totalRecords : "—"}</strong><span>전체 기록</span></div>
+            <div><strong>{data ? groups.length : "—"}</strong><span>함께 본 작품</span></div>
+            <div><strong>{data ? unrated.length : "—"}</strong><span>남길 평가</span></div>
           </div>
 
           {notice && (

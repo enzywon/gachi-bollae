@@ -81,19 +81,20 @@ export default function Home() {
     [choices, matchPool],
   );
   const nearbyMatches = useMemo(() => {
-    const selected = matchPool.filter((item) => choices.me.includes(item.id) || choices.partner.includes(item.id));
-    const tagWeight = new Map<string, number>();
-    selected.forEach((item) => item.tags.forEach((tag) => tagWeight.set(tag, (tagWeight.get(tag) ?? 0) + 1)));
+    const selectedIds = new Set([...choices.me, ...choices.partner]);
+    const selectedMoods = [preferences.me.mood, preferences.partner.mood].filter(Boolean);
+    const selectedGenres = [...preferences.me.genres, ...preferences.partner.genres];
 
-    return [...matchPool]
+    return contents
+      .filter((item) => item.runtime <= 60 && !selectedIds.has(item.id))
       .sort((a, b) => {
         const score = (item: DemoContent) =>
-          item.tags.reduce((sum, tag) => sum + (tagWeight.get(tag) ?? 0), 0) +
-          (choices.me.includes(item.id) || choices.partner.includes(item.id) ? 2 : 0);
+          item.moods.reduce((sum, mood) => sum + selectedMoods.filter((selected) => selected === mood).length * 3, 0) +
+          item.tags.reduce((sum, tag) => sum + selectedGenres.filter((selected) => selected === tag).length * 2, 0);
         return score(b) - score(a) || a.runtime - b.runtime;
       })
       .slice(0, 3);
-  }, [choices, matchPool]);
+  }, [choices, contents, preferences]);
   const resultPool = matches.length > 0 ? matches : nearbyMatches;
   const winner = resultPool[matchIndex % Math.max(resultPool.length, 1)];
   const isMutual = matches.length > 0;
@@ -163,6 +164,15 @@ export default function Home() {
     setPerson("me");
     setIndex(0);
     setScreen("pick");
+  };
+
+  const retryPreferences = () => {
+    setChoices({ me: [], partner: [] });
+    setPreferences({ me: { mood: "", genres: [] }, partner: { mood: "", genres: [] } });
+    setPerson("me");
+    setIndex(0);
+    setMatchIndex(0);
+    setScreen("preference");
   };
 
   const choose = (liked: boolean) => {
@@ -363,6 +373,16 @@ export default function Home() {
               <span>✓</span><p>“{savedTitle}”을 함께 본 목록에 저장했어요.</p><Link href="/records">목록 보기</Link>
             </div>
           )}
+        </section>
+      )}
+
+      {screen === "match" && !winner && (
+        <section className="match-result">
+          <div className="match-burst" aria-hidden="true">✦</div>
+          <div className="match-kicker">개별 선택은 그대로 지켰어요</div>
+          <h1>오늘 후보 안에서는<br />새 추천을 만들기 어려워요.</h1>
+          <p className="match-result-lead">누가 무엇을 골랐는지 드러내지 않기 위해, 개별 선택 작품은 추천 후보에서 제외했어요.</p>
+          <button type="button" className="match-primary" onClick={retryPreferences}>오늘 취향 다시 맞추기 <span>→</span></button>
         </section>
       )}
 
