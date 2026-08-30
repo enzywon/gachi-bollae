@@ -51,6 +51,13 @@
 - **데이터베이스 장애 격리:** DB가 없어도 추천 기능과 화면은 정상 동작하고, 저장 기능만 명확한 503 응답으로 저하되도록 구성했습니다.
 - **기기 단위 데이터 분리:** 로그인 전 프로토타입에서는 `HttpOnly`, `SameSite=Lax`, 운영 환경의 `Secure` 속성을 가진 익명 소유자 쿠키로 기록을 구분합니다. 실제 사용자 도입 전에는 인증 체계로 교체할 예정입니다.
 
+## 관련 문서
+
+- [서비스 디자인 컨셉](./docs/gachi-bollae-service-design-concept-v0.1.md)
+- [함께 보기 MVP UX 명세](./docs/gachi-bollae-together-mvp-ux-v0.1.md)
+- [디자인 적용 계획](./docs/gachi-bollae-design-application-plan-v0.1.md)
+- [평가 기능 PRD](./docs/gachi-bollae-rating-prd-v0.1.md)
+
 ## 기술 구성
 
 | 영역 | 기술 | 사용 목적 |
