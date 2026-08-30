@@ -25,3 +25,10 @@ test("PR head는 검증된 Git 객체로만 가져온다", () => {
   assert.match(workflow, /if \[ "\$fetched_head" != "\$HEAD_SHA" \]/);
   assert.match(workflow, /git diff --quiet "\$BASE_SHA" "\$HEAD_SHA"/);
 });
+
+test("같은 PR의 외부 리뷰 요청은 직렬화하고 오래된 head는 건너뛴다", () => {
+  assert.match(workflow, /group: ai-review-\$\{\{ github\.event\.pull_request\.number \}\}/);
+  assert.match(workflow, /cancel-in-progress: false/);
+  assert.match(workflow, /current_head=\$\(gh api .* --jq \.head\.sha\)/);
+  assert.match(workflow, /if: needs\.preflight\.outputs\.current == 'true'/);
+});

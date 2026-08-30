@@ -20,7 +20,9 @@ permissions:
 
 concurrency:
   group: ai-review-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  # 외부 리뷰 요청은 Actions 실행을 취소해도 계속된다. 같은 PR의 실행을 직렬화해야
+  # 이전 라운드 응답이 다음 라운드에 섞이지 않는다.
+  cancel-in-progress: false
 
 env:
   # 우리가 단 요청 코멘트임을 알리는 표식. 취소된 실행이 남긴 것까지 찾아 지우는 데 쓴다.
@@ -28,10 +30,37 @@ env:
   REQUEST_MARKER: '<!-- ai-review-request -->'
 
 jobs:
+  preflight:
+    name: 리뷰 대상 확인
+    # 포크에서 올라온 PR에는 시크릿을 사용하는 review job을 열지 않는다.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      current: ${{ steps.head.outputs.current }}
+    steps:
+      # 직렬 대기 중 새 커밋이 올라오면 오래된 이벤트는 외부 리뷰를 요청하지 않는다.
+      - name: 현재 PR head 확인
+        id: head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          current_head=$(gh api "repos/${REPOSITORY}/pulls/${PR_NUMBER}" --jq .head.sha)
+          if [ "$current_head" = "$EVENT_HEAD_SHA" ]; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "대기 중 PR head가 바뀌어 오래된 리뷰 실행을 건너뜁니다."
+            echo "current=false" >> "$GITHUB_OUTPUT"
+          fi
+
   review:
     name: AI 리뷰
-    # 포크에서 올라온 PR에는 시크릿이 전달되지 않으므로 건너뛴다.
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    needs: preflight
+    if: needs.preflight.outputs.current == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
