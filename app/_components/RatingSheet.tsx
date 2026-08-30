@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { kstDefaultRecordDate, kstToday } from "../_lib/date";
 import {
   MAX_COMMENT_LENGTH,
@@ -77,6 +77,54 @@ export default function RatingSheet({
   const [values, setValues] = useState<RatingSheetValues>(() => ({ ...defaultValues(), ...initial }));
   const today = useMemo(() => kstToday(), []);
   const seasonAllowed = allowsSeason(format);
+  const sheetRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const scrollY = window.scrollY;
+    const { style } = document.body;
+    const restore = { position: style.position, top: style.top, width: style.width };
+    const opener = document.activeElement;
+
+    style.position = "fixed";
+    style.top = `-${scrollY}px`;
+    style.width = "100%";
+    sheetRef.current?.focus();
+
+    const trapFocus = (event: KeyboardEvent) => {
+      if (event.key !== "Tab" || !sheetRef.current) return;
+      const focusable = Array.from(
+        sheetRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+        ),
+      );
+      if (focusable.length === 0) {
+        event.preventDefault();
+        sheetRef.current.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+      const focusOutside = !active || !sheetRef.current.contains(active);
+      if (event.shiftKey && (active === first || active === sheetRef.current || focusOutside)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (active === last || active === sheetRef.current || focusOutside)) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", trapFocus);
+
+    return () => {
+      document.removeEventListener("keydown", trapFocus);
+      style.position = restore.position;
+      style.top = restore.top;
+      style.width = restore.width;
+      window.scrollTo(0, scrollY);
+      if (opener instanceof HTMLElement) opener.focus();
+    };
+  }, []);
 
   /**
    * 저장 중에는 닫기를 무시한다.
@@ -119,6 +167,8 @@ export default function RatingSheet({
   return (
     <div className="sheet-backdrop" role="presentation" onClick={requestClose}>
       <section
+        ref={sheetRef}
+        tabIndex={-1}
         className="rating-sheet"
         role="dialog"
         aria-modal="true"
