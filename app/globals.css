@@ -444,3 +444,69 @@ button:focus-visible { outline: 3px solid rgba(180, 113, 255, 0.8); outline-offs
 .match-result .save-toast { margin-top: 20px; border-color: #cbd9d3; background: #e8f0ec; text-align: left; }
 .match-result .save-toast p { color: #344a43; }
 .match-result .save-toast a { color: #315c54; border-color: #b9ccc4; }
+
+/* 함께 본 목록 — 매칭 플로우와 이어지는 모바일 기록장 */
+.records-app { --records-ink: #17211f; --records-green: #315c54; min-height: 100vh; min-height: 100dvh; color: var(--records-ink); background: linear-gradient(180deg, #f7f8f5 0%, #eef1ed 100%); padding: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left); }
+.records-header { height: calc(68px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 20px 0; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #dfe4df; }
+.records-header .match-brand { text-decoration: none; }
+.records-recommend { min-height: 38px; padding: 0 12px; display: inline-flex; align-items: center; gap: 7px; border: 1px solid #d8ded9; border-radius: 8px; background: rgba(255,255,255,.62); color: #43564f; text-decoration: none; font-size: 12px; font-weight: 650; }
+.records-wrap { width: min(100% - 32px, 520px); margin: 0 auto; }
+.records-stage { padding: 46px 0 72px; }
+.records-heading > span { color: #60736d; font-size: 10px; font-weight: 700; letter-spacing: .12em; }
+.records-heading h1 { margin: 10px 0 8px; font-size: 38px; line-height: 1.12; letter-spacing: -.055em; font-weight: 680; }
+.records-heading p { margin: 0; color: #67726e; font-size: 14px; line-height: 1.6; }
+.records-overview { margin: 28px 0 24px; display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid #dce2de; border-radius: 14px; background: rgba(255,255,255,.68); }
+.records-overview div { min-width: 0; padding: 16px 10px; display: grid; gap: 5px; text-align: center; }
+.records-overview div + div { border-left: 1px solid #e1e6e2; }
+.records-overview strong { font-size: 21px; letter-spacing: -.04em; }
+.records-overview span { color: #74817c; font-size: 9px; }
+.records-app .save-toast { grid-template-columns: 30px 1fr auto; border-color: #cbd9d3; background: #e8f0ec; color: #344a43; box-shadow: none; }
+.records-app .save-toast p { color: #344a43; }
+.records-app .save-toast > button { color: #526a61; }
+.records-app .unrated-panel { margin-bottom: 24px; padding: 18px; border: 1px solid #d6dfda; border-radius: 14px; background: #edf3f0; }
+.records-app .unrated-head { display: flex; align-items: flex-start; gap: 11px; }
+.records-app .unrated-head > span { width: 28px; height: 28px; flex: 0 0 auto; display: grid; place-items: center; border-radius: 8px; background: #315c54; color: #fff; font-size: 11px; }
+.records-app .unrated-head h2 { color: #263832; font-size: 14px; }
+.records-app .unrated-head p { color: #687a73; line-height: 1.5; }
+.records-app .unrated-list { margin-top: 14px; }
+.records-app .unrated-list li { border-color: #dbe3de; border-radius: 10px; background: rgba(255,255,255,.72); }
+.records-app .unrated-list strong { color: #23332e; }
+.records-app .unrated-list small { color: #718078; }
+.records-app .unrated-list button { border-color: #315c54; border-radius: 8px; background: #315c54; color: #fff; }
+.records-toolbar { grid-template-columns: 1.2fr 1fr 1fr; gap: 8px; margin-bottom: 18px; }
+.records-app .toolbar-label { color: #75817c; font-size: 9px; }
+.records-app .toolbar-group select { width: 100%; min-height: 44px; padding: 0 30px 0 11px; border: 1px solid #d8ded9; border-radius: 9px; background: rgba(255,255,255,.72); color: #31423c; font: inherit; font-size: 11px; appearance: auto; }
+.records-app .records-status { color: #67756f; }
+.records-app .record-list { gap: 10px; }
+.records-app .record-card { border: 1px solid #dce2de; border-radius: 14px; background: rgba(255,255,255,.78); box-shadow: 0 12px 34px rgba(28,45,40,.05); backdrop-filter: none; }
+.records-app .record-card-head { grid-template-columns: 58px 1fr 18px; gap: 14px; padding: 16px; color: #17211f; }
+.records-app .record-poster { width: 58px; height: 76px; border-radius: 8px; font-size: 22px; }
+.records-app .record-summary h2 { font-size: 17px; }
+.records-app .record-meta { margin-top: 7px; }
+.records-app .record-meta span { padding: 4px 6px; background: #eff2ef; color: #68746f; border-radius: 4px; }
+.records-app .stars em { color: #5e6b66; }
+.records-app .stars i { color: #c9d0cc; }
+.records-app .stars.none, .records-app .edited-badge, .records-app .record-toggle { color: #7e8984; }
+.records-app .rewatch-badge { color: #49635a; border-color: #cad7d1; background: #edf3f0; border-radius: 5px; }
+.records-app .record-comment { color: #384b44; }
+.records-app .record-memo, .records-app .record-pick-context { color: #75817c; }
+.records-app .record-detail { border-color: #e0e5e2; }
+.records-app .record-detail h3 { color: #6e7b75; }
+.records-app .record-detail li { border-color: #dfe5e1; border-radius: 10px; background: #f7f8f6; }
+.records-app .record-detail-actions button { border-color: #d2dad6; color: #586a63; border-radius: 7px; }
+.records-app .empty-state { border-color: #d8dfdb; background: rgba(255,255,255,.7); }
+.records-app .empty-state h2 { color: #263630; }
+.records-app .empty-state p { color: #6c7974; }
+.records-app .empty-state a, .records-app .empty-state button { border-color: #315c54; background: #315c54; color: #fff; }
+.records-footer { width: min(100% - 32px, 520px); margin: 0 auto; padding: 22px 0 calc(28px + env(safe-area-inset-bottom)); display: grid; gap: 6px; border-top: 1px solid #dce2de; color: #7c8782; font-size: 9px; }
+.match-result-lead { margin: -2px auto 22px; max-width: 360px; color: #67756f; font-size: 12px; line-height: 1.6; }
+.ticket-private { grid-column: 1 / -1; padding-top: 8px; border-top: 1px solid #e1e6e3; color: #71807a; text-align: center; font-size: 9px; }
+
+@container (max-width: 420px) {
+  .records-stage { padding-top: 36px; }
+  .records-heading h1 { font-size: 34px; }
+  .records-toolbar { grid-template-columns: 1.2fr 1fr; }
+  .records-toolbar .toolbar-group:last-child { grid-column: 1 / -1; }
+  .records-app .record-card-head { grid-template-columns: 52px 1fr 16px; gap: 11px; padding: 14px; }
+  .records-app .record-poster { width: 52px; height: 70px; }
+}

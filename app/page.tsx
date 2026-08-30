@@ -25,6 +25,15 @@ function reasonFor(item: DemoContent) {
   return "편안한 분위기의 공통 취향";
 }
 
+function recommendationReasons(item: DemoContent, mutual: boolean) {
+  return [
+    mutual ? "두 사람 모두 직접 고른 공통 후보" : "두 사람의 선택과 가장 가까운 후보",
+    reasonFor(item),
+    `${item.runtime}분 안에 부담 없이 시청 가능`,
+    item.safetyKnown ? "피하고 싶은 요소를 확인한 후보" : "상세 등급은 시청 전에 확인 필요",
+  ];
+}
+
 export default function Home() {
   const [screen, setScreen] = useState<Screen>("intro");
   const [person, setPerson] = useState<Person>("me");
@@ -49,7 +58,23 @@ export default function Home() {
     () => matchPool.filter((item) => choices.me.includes(item.id) && choices.partner.includes(item.id)),
     [choices, matchPool],
   );
-  const winner = matches[matchIndex % Math.max(matches.length, 1)];
+  const nearbyMatches = useMemo(() => {
+    const selected = matchPool.filter((item) => choices.me.includes(item.id) || choices.partner.includes(item.id));
+    const tagWeight = new Map<string, number>();
+    selected.forEach((item) => item.tags.forEach((tag) => tagWeight.set(tag, (tagWeight.get(tag) ?? 0) + 1)));
+
+    return [...matchPool]
+      .sort((a, b) => {
+        const score = (item: DemoContent) =>
+          item.tags.reduce((sum, tag) => sum + (tagWeight.get(tag) ?? 0), 0) +
+          (choices.me.includes(item.id) || choices.partner.includes(item.id) ? 2 : 0);
+        return score(b) - score(a) || a.runtime - b.runtime;
+      })
+      .slice(0, 3);
+  }, [choices, matchPool]);
+  const resultPool = matches.length > 0 ? matches : nearbyMatches;
+  const winner = resultPool[matchIndex % Math.max(resultPool.length, 1)];
+  const isMutual = matches.length > 0;
 
   useEffect(() => {
     let active = true;
@@ -222,43 +247,34 @@ export default function Home() {
 
       {screen === "match" && winner && (
         <section className="match-result">
-          <div className="match-burst" aria-hidden="true">✓</div>
-          <div className="match-kicker">공통 후보를 찾았어요</div>
-          <h1>두 사람의 선택이<br />여기서 겹쳤어요.</h1>
+          <div className="match-burst" aria-hidden="true">{isMutual ? "✓" : "✦"}</div>
+          <div className="match-kicker">{isMutual ? "공통 후보를 찾았어요" : "선택을 바탕으로 골랐어요"}</div>
+          <h1>{isMutual ? <>두 사람의 선택이<br />여기서 겹쳤어요.</> : <>다시 고르지 않아도 돼요.<br />가까운 후보를 찾았어요.</>}</h1>
+          {!isMutual && <p className="match-result-lead">각자의 응답은 공개하지 않고, 두 선택에 가까운 작품부터 제안해요.</p>}
           <div className={`result-ticket ${winner.palette}`}>
             <div className="ticket-art"><span>{winner.title.slice(0, 1)}</span></div>
-            <div className="ticket-copy"><small>공통 후보 {matchIndex + 1}</small><h2>{winner.title}</h2><p>{winner.provider} · {winner.runtime}분 · {winner.format}</p></div>
-            <div className="ticket-hearts"><i className="avatar me">나</i><span>＋</span><i className="avatar partner">함</i></div>
+            <div className="ticket-copy"><small>{isMutual ? "공통 후보" : "가까운 추천"} {matchIndex + 1}</small><h2>{winner.title}</h2><p>{winner.provider} · {winner.runtime}분 · {winner.format}</p></div>
+            {isMutual ? <div className="ticket-hearts"><i className="avatar me">나</i><span>＋</span><i className="avatar partner">함</i></div> : <div className="ticket-private">두 사람의 개별 선택은 계속 비공개예요</div>}
           </div>
           <div className="match-why">
-            <strong>왜 둘에게 잘 맞을까요?</strong>
-            <span>✓ {reasonFor(winner)}</span><span>✓ 둘 다 직접 남긴 후보</span><span>{winner.safetyKnown ? "✓ 피하고 싶은 요소 없이 편안하게" : "ⓘ 시청 전 상세 등급을 확인해 주세요"}</span>
+            <strong>이 후보를 추천하는 이유</strong>
+            {recommendationReasons(winner, isMutual).map((reason, reasonIndex) => <span key={reason}> {reasonIndex === 3 && !winner.safetyKnown ? "ⓘ" : "✓"} {reason}</span>)}
           </div>
           <button type="button" className="match-primary" onClick={() => setSheetTarget(winner)}>
             이 콘텐츠로 결정 <span>→</span>
           </button>
-          {matches.length > 1 && (
-            <button type="button" className="match-again" onClick={() => setMatchIndex((value) => (value + 1) % matches.length)}>
-              다른 공통 후보 보기
+          {resultPool.length > 1 && (
+            <button type="button" className="match-again" onClick={() => setMatchIndex((value) => (value + 1) % resultPool.length)}>
+              다른 {isMutual ? "공통" : "추천"} 후보 보기
             </button>
           )}
-          <p className="match-count">공통 후보 {matches.length}개 · 두 사람의 선택이 겹친 순서로 보여드려요</p>
+          <p className="match-count">{isMutual ? `공통 후보 ${matches.length}개 · 두 사람의 선택이 겹친 순서예요` : `추천 후보 ${resultPool.length}개 · 선택과 가까운 순서예요`}</p>
           {catalogSource === "tmdb" && <p className="match-source">콘텐츠 정보와 포스터는 TMDB에서 제공받습니다.</p>}
           {savedTitle && (
             <div className="save-toast" role="status">
               <span>✓</span><p>“{savedTitle}”을 함께 본 목록에 저장했어요.</p><Link href="/records">목록 보기</Link>
             </div>
           )}
-        </section>
-      )}
-
-      {screen === "match" && !winner && (
-        <section className="match-result">
-          <div className="match-burst" aria-hidden="true">—</div>
-          <div className="match-kicker">아직 겹치는 선택이 없어요</div>
-          <h1>서로의 선택은 숨긴 채<br />새 후보로 다시 골라봐요.</h1>
-          <p className="match-count">결과가 없더라도 상대가 무엇을 제외했는지는 공개하지 않아요.</p>
-          <button type="button" className="match-primary" onClick={start}>다시 고르기 <span>→</span></button>
         </section>
       )}
 
