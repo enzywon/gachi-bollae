@@ -1,6 +1,22 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { tmdbDetailsToContent } from "../app/_lib/tmdb-catalog.js";
+import { discoverPathFor, genreIdsFor, pageForSeed, tmdbDetailsToContent } from "../app/_lib/tmdb-catalog.js";
+
+test("오늘 고른 장르를 미디어 유형별 TMDB discover 장르 ID로 변환한다", () => {
+  assert.deepEqual(genreIdsFor(["코미디", "추리", "코미디", "알 수 없음"], "tv"), [35, 9648]);
+  assert.deepEqual(genreIdsFor(["로맨스"], "movie"), [10749, 18]);
+  assert.deepEqual(genreIdsFor(["로맨스"], "tv"), [18, 10766]);
+  const path = discoverPathFor("tv", { genreIds: [35, 9648], page: 3 });
+  assert.match(path, /^\/discover\/tv\?/);
+  assert.equal(new URL(`https://example.com${path}`).searchParams.get("with_genres"), "35|9648");
+  assert.equal(new URL(`https://example.com${path}`).searchParams.get("page"), "3");
+});
+
+test("세션 시드는 같은 검색 페이지를 재현하면서 후속 페이지를 순환한다", () => {
+  const first = pageForSeed("session-a");
+  assert.equal(pageForSeed("session-a"), first);
+  assert.equal(pageForSeed("session-a", 1), (first % 5) + 1);
+});
 
 test("TMDB 영화 상세를 추천 콘텐츠로 변환한다", () => {
   const content = tmdbDetailsToContent({ id: 11, title: "별들의 전쟁", runtime: 121,
