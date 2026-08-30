@@ -17,6 +17,8 @@ import {
 
 type Mode = "solo" | "together";
 type Reaction = "pick" | "skip" | "watched";
+type PickerPerson = "me" | "companion";
+type PrivatePickPhase = "idle" | "picking" | "result";
 
 
 const CONTEXT_POINTS = 35;
@@ -67,6 +69,10 @@ export default function Home() {
   const [refreshSeed, setRefreshSeed] = useState(0);
   const [history, setHistory] = useState<RecommendationHistory>(EMPTY_HISTORY);
   const historyRequestGeneration = useRef(0);
+  const [privatePickPhase, setPrivatePickPhase] = useState<PrivatePickPhase>("idle");
+  const [pickerPerson, setPickerPerson] = useState<PickerPerson>("me");
+  const [pickerIndex, setPickerIndex] = useState(0);
+  const [privatePicks, setPrivatePicks] = useState<Record<PickerPerson, number[]>>({ me: [], companion: [] });
 
   // 기록과 평가 상태
   const [sheetTarget, setSheetTarget] = useState<DemoContent | null>(null);
@@ -174,6 +180,38 @@ export default function Home() {
     setSheetError(null);
     setSavedIds([]);
     setToast(null);
+    setPrivatePickPhase("idle");
+    setPickerPerson("me");
+    setPickerIndex(0);
+    setPrivatePicks({ me: [], companion: [] });
+  };
+
+  const startPrivatePick = () => {
+    setSelectedContent(null);
+    setPrivatePicks({ me: [], companion: [] });
+    setPickerPerson("me");
+    setPickerIndex(0);
+    setPrivatePickPhase("picking");
+  };
+
+  const submitPrivatePick = (contentId: number, liked: boolean) => {
+    const nextPicks = liked
+      ? { ...privatePicks, [pickerPerson]: [...privatePicks[pickerPerson], contentId] }
+      : privatePicks;
+    setPrivatePicks(nextPicks);
+
+    if (pickerIndex < recommendations.length - 1) {
+      setPickerIndex((current) => current + 1);
+      return;
+    }
+
+    if (pickerPerson === "me") {
+      setPickerPerson("companion");
+      setPickerIndex(0);
+      return;
+    }
+
+    setPrivatePickPhase("result");
   };
 
   const openSheet = (content: DemoContent) => {
@@ -247,6 +285,10 @@ export default function Home() {
   };
 
   const progress = step === 0 ? 0 : Math.min(step, 4) * 25;
+  const privateMatches = recommendations.filter(({ item }) =>
+    privatePicks.me.includes(item.id) && privatePicks.companion.includes(item.id)
+  );
+  const currentPrivateCandidate = recommendations[pickerIndex];
 
   return (
     <main className="app-shell">
@@ -472,6 +514,17 @@ export default function Home() {
               </div>
             )}
 
+            {mode === "together" && recommendations.length > 0 && !selectedContent && privatePickPhase === "idle" && (
+              <aside className="private-pick-invite" aria-labelledby="private-pick-title">
+                <div>
+                  <span className="private-pick-kicker">서로 눈치 보지 않고 고르기</span>
+                  <h2 id="private-pick-title">각자 후보를 고른 뒤, 겹친 선택만 확인해요.</h2>
+                  <p>한 기기를 번갈아 사용해요. 각자의 응답은 상대에게 보이지 않습니다.</p>
+                </div>
+                <button type="button" onClick={startPrivatePick}>비공개로 같이 고르기 <span>→</span></button>
+              </aside>
+            )}
+
             {recommendations.length === 0 && (
               <div className="empty-state">
                 <span aria-hidden="true">⌕</span>
@@ -481,7 +534,78 @@ export default function Home() {
               </div>
             )}
 
-            <div className="result-grid">
+            {privatePickPhase === "picking" && currentPrivateCandidate && (
+              <section className="private-picker" aria-labelledby="private-picker-title">
+                <div className="private-picker-head">
+                  <div className="picker-person">
+                    <span className={`picker-avatar ${pickerPerson}`} aria-hidden="true">
+                      {pickerPerson === "me" ? "나" : "함"}
+                    </span>
+                    <div>
+                      <small>지금 고르는 사람</small>
+                      <h2 id="private-picker-title">{pickerPerson === "me" ? "나" : "함께 보는 사람"}</h2>
+                    </div>
+                  </div>
+                  <strong>{pickerIndex + 1} / {recommendations.length}</strong>
+                </div>
+                <div className="private-picker-progress" aria-hidden="true">
+                  <span style={{ width: `${((pickerIndex + 1) / recommendations.length) * 100}%` }} />
+                </div>
+                {pickerPerson === "companion" && pickerIndex === 0 && (
+                  <p className="handoff-note" role="status">함께 보는 사람에게 기기를 건네주세요. 앞선 선택은 보이지 않아요.</p>
+                )}
+                <article className="private-candidate">
+                  <div className={`private-candidate-poster ${currentPrivateCandidate.item.palette}`}>
+                    <span>{currentPrivateCandidate.item.title.slice(0, 1)}</span>
+                  </div>
+                  <div className="private-candidate-copy">
+                    <span>{currentPrivateCandidate.item.eyebrow}</span>
+                    <h3>{currentPrivateCandidate.item.title}</h3>
+                    <div className="metadata"><span>{currentPrivateCandidate.item.format}</span><span>{currentPrivateCandidate.item.runtime}분</span><span>{currentPrivateCandidate.item.provider}</span></div>
+                    <p>{currentPrivateCandidate.item.synopsis}</p>
+                  </div>
+                </article>
+                <div className="private-picker-actions">
+                  <button type="button" className="private-pass" onClick={() => submitPrivatePick(currentPrivateCandidate.item.id, false)}>이번엔 제외</button>
+                  <button type="button" className="private-like" onClick={() => submitPrivatePick(currentPrivateCandidate.item.id, true)}>후보로 남기기</button>
+                </div>
+                <p className="privacy-note">선택은 두 사람의 응답이 겹칠 때만 공개돼요.</p>
+              </section>
+            )}
+
+            {privatePickPhase === "result" && (
+              <section className="private-match-result" aria-live="polite">
+                {privateMatches.length > 0 ? (
+                  <>
+                    <span className="match-mark" aria-hidden="true">✓</span>
+                    <span className="private-pick-kicker">공통 후보 {privateMatches.length}개</span>
+                    <h2>두 사람의 선택이 겹쳤어요.</h2>
+                    <p>서로의 다른 선택은 공개하지 않았어요. 오늘의 첫 공통 후보를 확인해 보세요.</p>
+                    <article className="matched-content">
+                      <div className={`matched-content-poster ${privateMatches[0].item.palette}`} aria-hidden="true">{privateMatches[0].item.title.slice(0, 1)}</div>
+                      <div><small>첫 번째 공통 후보</small><h3>{privateMatches[0].item.title}</h3><p>{privateMatches[0].item.provider} · {privateMatches[0].item.runtime}분 · {privateMatches[0].item.format}</p></div>
+                    </article>
+                    <div className="match-actions">
+                      <button type="button" className="pick-button" onClick={() => { setReactions((current) => ({ ...current, [privateMatches[0].item.id]: "pick" })); setSelectedContent(privateMatches[0].item); setPrivatePickPhase("idle"); }}>이 콘텐츠로 결정</button>
+                      <button type="button" className="match-secondary" onClick={startPrivatePick}>다시 고르기</button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <span className="match-mark empty" aria-hidden="true">↻</span>
+                    <span className="private-pick-kicker">공통 후보 없음</span>
+                    <h2>이번 선택은 겹치지 않았어요.</h2>
+                    <p>서로의 선택은 공개하지 않고, 같은 후보를 한 번 더 보거나 조건을 넓힐 수 있어요.</p>
+                    <div className="match-actions">
+                      <button type="button" className="pick-button" onClick={startPrivatePick}>같은 후보로 다시 고르기</button>
+                      <button type="button" className="match-secondary" onClick={() => { setPrivatePickPhase("idle"); setStep(3); }}>조건 넓히기</button>
+                    </div>
+                  </>
+                )}
+              </section>
+            )}
+
+            {privatePickPhase === "idle" && <div className="result-grid">
               {recommendations.map(({ item, fit, previouslyWatched }, index) => {
                 const reaction = reactions[item.id];
                 const matchedTaste = [...myTastes, ...partnerTastes].find((taste) => item.tags.includes(taste));
@@ -532,9 +656,9 @@ export default function Home() {
                   </article>
                 );
               })}
-            </div>
+            </div>}
 
-            {recommendations.length > 0 && <div className="result-footer">
+            {recommendations.length > 0 && privatePickPhase === "idle" && <div className="result-footer">
               <p>마음에 드는 게 없나요? 거절한 콘텐츠를 제외하고 다시 찾아볼게요.</p>
               <button type="button" onClick={() => { setReactions({}); setSelectedContent(null); setRefreshSeed((value) => value + 3); }}>↻ 다른 3개 보기</button>
             </div>}
