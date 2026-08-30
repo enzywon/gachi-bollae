@@ -121,8 +121,12 @@ export default function RatingSheet({
       style.position = restore.position;
       style.top = restore.top;
       style.width = restore.width;
-      window.scrollTo(0, scrollY);
-      if (opener instanceof HTMLElement) opener.focus();
+      const rootStyle = document.documentElement.style;
+      const previousScrollBehavior = rootStyle.scrollBehavior;
+      rootStyle.scrollBehavior = "auto";
+      window.scrollTo({ top: scrollY, left: 0, behavior: "auto" });
+      rootStyle.scrollBehavior = previousScrollBehavior;
+      if (opener instanceof HTMLElement) opener.focus({ preventScroll: true });
     };
   }, []);
 
