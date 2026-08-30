@@ -22,13 +22,13 @@ button { font: inherit; }
 button, a { -webkit-tap-highlight-color: rgba(180, 113, 255, .2); }
 button:focus-visible { outline: 3px solid rgba(180, 113, 255, 0.8); outline-offset: 3px; }
 
-.app-shell { min-height: 100vh; min-height: 100dvh; position: relative; overflow-x: clip; background: radial-gradient(circle at 50% 34%, rgba(180, 86, 237, 0.18), transparent 34%), radial-gradient(circle at 80% 18%, rgba(255, 117, 163, .08), transparent 24%), linear-gradient(180deg, #0d0b18 0%, #100d1e 52%, #090812 100%); }
+.app-shell { min-height: 100vh; min-height: 100dvh; position: relative; overflow-x: clip; padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); background: radial-gradient(circle at 50% 34%, rgba(180, 86, 237, 0.18), transparent 34%), radial-gradient(circle at 80% 18%, rgba(255, 117, 163, .08), transparent 24%), linear-gradient(180deg, #0d0b18 0%, #100d1e 52%, #090812 100%); }
 .app-shell::before { content: ""; position: fixed; inset: 0; pointer-events: none; opacity: .28; background-image: linear-gradient(rgba(255,255,255,.018) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.018) 1px, transparent 1px); background-size: 48px 48px; mask-image: linear-gradient(to bottom, black, transparent 78%); }
 .ambient { position: fixed; width: 26vw; height: 76vh; top: 9vh; filter: blur(48px); opacity: .22; pointer-events: none; border-radius: 50%; }
 .ambient-left { left: -13vw; background: linear-gradient(180deg, #7f43b5, #343575); transform: rotate(-8deg); }
 .ambient-right { right: -14vw; background: linear-gradient(180deg, #e05b86, #6d2a6f); transform: rotate(8deg); }
 
-.topbar { height: 72px; padding: 0 clamp(22px, 4vw, 68px); display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); background: rgba(7, 9, 18, .7); backdrop-filter: blur(18px); position: relative; z-index: 10; }
+.topbar { height: calc(72px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) clamp(22px, 4vw, 68px) 0; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); background: rgba(7, 9, 18, .7); backdrop-filter: blur(18px); position: relative; z-index: 10; }
 .brand { border: 0; background: none; color: #ded8e9; font-size: 23px; font-weight: 500; letter-spacing: -1px; cursor: pointer; padding: 8px 0; display: flex; align-items: center; gap: 2px; }
 .brand span { color: #fff; font-weight: 760; }
 .brand i { width: 25px; height: 25px; display: grid; place-items: center; border-radius: 9px; margin-right: 7px; font-style: normal; font-size: 12px; color: #fff; background: linear-gradient(135deg, #c86ef6, #ff7ca6); box-shadow: 0 7px 20px rgba(220, 86, 177, .3); transform: rotate(-5deg); }
@@ -270,7 +270,7 @@ button:focus-visible { outline: 3px solid rgba(180, 113, 255, 0.8); outline-offs
 }
 
 @media (max-width: 680px) {
-  .topbar { height: calc(64px + env(safe-area-inset-top)); padding-top: env(safe-area-inset-top); padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); gap: 10px; }
+  .topbar { height: calc(64px + env(safe-area-inset-top)); padding: env(safe-area-inset-top) 16px 0; gap: 10px; }
   .brand { font-size: 18px; min-width: 0; }
   .header-meta { gap: 8px; min-width: 0; }
   .step-label { display: none; }
