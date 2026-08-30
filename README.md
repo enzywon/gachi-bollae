@@ -20,7 +20,7 @@
 
 추천으로 끝내지 않고 선택한 콘텐츠와 감상을 기록합니다. 남긴 별점은 다음 추천의 태그 가중치에 반영되고, 이미 본 작품은 새 후보에서 자동으로 제외됩니다.
 
-> 현재는 제품 흐름과 기술 구조를 검증하는 프로토타입입니다. 콘텐츠는 프로젝트를 위해 만든 데모 데이터 6건을 사용하며, 실제 OTT 카탈로그와 사용자 계정은 아직 연동하지 않았습니다.
+> 현재는 제품 흐름과 기술 구조를 검증하는 프로토타입입니다. `TMDB_API_TOKEN`이 있으면 TMDB의 한국 인기 영화·TV 카탈로그를 사용하고, 토큰이 없거나 API 요청이 실패하면 데모 데이터 6건으로 안전하게 전환합니다. 사용자 계정은 아직 연동하지 않았습니다.
 
 ## 핵심 경험
 
@@ -64,6 +64,7 @@
 | --- | --- | --- |
 | Web | Next.js 16 App Router, React 19, TypeScript | 추천 흐름, 기록 화면, Route Handler API |
 | Styling | Tailwind CSS 4 | 모바일 우선 반응형 UI |
+| Catalog | TMDB API | 한국 인기 영화·TV 정보, 포스터, 시청 제공처 조회 |
 | Data | Neon Postgres, Drizzle ORM | 시청 기록·평가 저장과 스키마 관리 |
 | Quality | ESLint, Node.js Test Runner | 정적 검사, 빌드·렌더링·API 회귀 테스트 |
 | Delivery | GitHub Actions, Vercel | PR 품질 검사와 프리뷰·프로덕션 배포 |
@@ -94,9 +95,10 @@ npm ci
 npm run dev
 ```
 
-추천 흐름은 데이터베이스 없이 실행할 수 있습니다. 기록과 평가 기능까지 사용하려면 Neon에서 Postgres 프로젝트를 만든 뒤 `.env.local`에 연결 문자열을 설정합니다.
+추천 흐름은 데이터베이스 없이 실행할 수 있습니다. 실제 콘텐츠 후보를 사용하려면 TMDB의 API Read Access Token을, 기록과 평가 기능까지 사용하려면 Neon 연결 문자열을 `.env.local`에 설정합니다.
 
 ```dotenv
+TMDB_API_TOKEN=<TMDB API Read Access Token>
 DATABASE_URL=postgresql://<user>:<password>@<host>/<database>?sslmode=require
 DATABASE_URL_UNPOOLED=postgresql://<user>:<password>@<host>/<database>?sslmode=require
 ```
@@ -105,7 +107,7 @@ DATABASE_URL_UNPOOLED=postgresql://<user>:<password>@<host>/<database>?sslmode=r
 npm run db:migrate
 ```
 
-`DATABASE_URL_UNPOOLED`은 마이그레이션용 직결 주소이며, 없으면 `DATABASE_URL`을 사용합니다. `.env*` 파일은 Git에서 제외됩니다.
+`DATABASE_URL_UNPOOLED`은 마이그레이션용 직결 주소이며, 없으면 `DATABASE_URL`을 사용합니다. `TMDB_API_TOKEN`이 없으면 추천은 데모 콘텐츠로 동작합니다. `.env*` 파일은 Git에서 제외됩니다.
 
 ### 검증 명령어
 
