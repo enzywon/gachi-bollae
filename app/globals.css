@@ -129,6 +129,7 @@ button:focus-visible { outline: 3px solid rgba(180, 113, 255, 0.8); outline-offs
 .result-card:hover { transform: translateY(-4px); border-color: rgba(190,128,250,.42); }
 .result-card.reacted-skip, .result-card.reacted-watched { opacity: .52; }
 .demo-poster { height: 245px; position: relative; padding: 22px; overflow: hidden; isolation: isolate; }
+.demo-poster.has-image { background-position: center 22%; background-size: cover; }
 .demo-poster::before { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at 65% 38%, rgba(255,255,255,.25), transparent 18%), linear-gradient(140deg, transparent 35%, rgba(255,255,255,.12)); z-index: -1; }
 .poster-plum { background: linear-gradient(145deg, #361743, #b84b78); }
 .poster-blue { background: linear-gradient(145deg, #08172f, #2c65a7); }

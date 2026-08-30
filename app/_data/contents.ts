@@ -2,6 +2,8 @@ import type { ContentFormat } from "../_lib/types";
 
 export type DemoContent = {
   id: number;
+  source: "demo" | "tmdb";
+  mediaType: "movie" | "tv";
   title: string;
   eyebrow: string;
   runtime: number;
@@ -13,6 +15,8 @@ export type DemoContent = {
   contexts: string[];
   moods: string[];
   palette: string;
+  posterUrl: string | null;
+  safetyKnown: boolean;
 };
 
 export const CONTEXTS = [
@@ -30,6 +34,8 @@ export const PROVIDERS = ["Netflix", "TVING", "Disney+", "Coupang Play", "상관
 export const CONTENTS: DemoContent[] = [
   {
     id: 1,
+    source: "demo",
+    mediaType: "tv",
     title: "한밤의 레시피",
     eyebrow: "편안한 푸드 예능",
     runtime: 28,
@@ -41,9 +47,13 @@ export const CONTENTS: DemoContent[] = [
     contexts: ["식사 중", "자기 전", "편하게 보기"],
     moods: ["웃고 싶어요", "따뜻함"],
     palette: "poster-plum",
+    posterUrl: null,
+    safetyKnown: true,
   },
   {
     id: 2,
+    source: "demo",
+    mediaType: "tv",
     title: "사라진 초대장",
     eyebrow: "가볍게 풀어가는 미스터리",
     runtime: 52,
@@ -55,9 +65,13 @@ export const CONTENTS: DemoContent[] = [
     contexts: ["집중해서 보기", "편하게 보기"],
     moods: ["긴장감", "몰입"],
     palette: "poster-blue",
+    posterUrl: null,
+    safetyKnown: true,
   },
   {
     id: 3,
+    source: "demo",
+    mediaType: "tv",
     title: "우리 동네 우주센터",
     eyebrow: "따뜻한 생활 SF",
     runtime: 44,
@@ -69,9 +83,13 @@ export const CONTENTS: DemoContent[] = [
     contexts: ["자기 전", "편하게 보기", "집중해서 보기"],
     moods: ["따뜻함", "감동", "몰입"],
     palette: "poster-cyan",
+    posterUrl: null,
+    safetyKnown: true,
   },
   {
     id: 4,
+    source: "demo",
+    mediaType: "tv",
     title: "퇴근은 처음이라",
     eyebrow: "현실 공감 오피스 코미디",
     runtime: 32,
@@ -83,9 +101,13 @@ export const CONTENTS: DemoContent[] = [
     contexts: ["식사 중", "자기 전", "편하게 보기"],
     moods: ["웃고 싶어요", "따뜻함"],
     palette: "poster-coral",
+    posterUrl: null,
+    safetyKnown: true,
   },
   {
     id: 5,
+    source: "demo",
+    mediaType: "movie",
     title: "마지막 목격자",
     eyebrow: "대화가 필요한 정통 추리",
     runtime: 118,
@@ -97,9 +119,13 @@ export const CONTENTS: DemoContent[] = [
     contexts: ["집중해서 보기"],
     moods: ["긴장감", "몰입"],
     palette: "poster-gold",
+    posterUrl: null,
+    safetyKnown: true,
   },
   {
     id: 6,
+    source: "demo",
+    mediaType: "tv",
     title: "주말의 작은 여행",
     eyebrow: "잔잔한 여행 다큐 예능",
     runtime: 47,
@@ -111,6 +137,8 @@ export const CONTENTS: DemoContent[] = [
     contexts: ["식사 중", "자기 전", "편하게 보기"],
     moods: ["따뜻함", "감동"],
     palette: "poster-green",
+    posterUrl: null,
+    safetyKnown: true,
   },
 ];
 
@@ -119,5 +147,7 @@ export const CONTENTS: DemoContent[] = [
  * 외부 API를 도입하면 `tmdb:movie:12345` 형태로 확장한다. PRD 9.1.
  */
 export function contentKeyOf(content: DemoContent): string {
-  return `demo:${content.id}`;
+  return content.source === "tmdb"
+    ? `tmdb:${content.mediaType}:${Math.abs(content.id)}`
+    : `demo:${content.id}`;
 }
