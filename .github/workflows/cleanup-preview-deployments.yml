@@ -1,7 +1,8 @@
 name: Preview 배포 정리
 
 on:
-  pull_request:
+  # 포크 PR에도 저장소 secret이 전달되도록 기본 브랜치의 신뢰된 워크플로만 실행한다.
+  pull_request_target:
     types:
       - closed
   schedule:
@@ -29,8 +30,11 @@ jobs:
       VERCEL_TEAM_ID: team_260kLyoRxXq4EAR2jQ36vluC
       CLOSED_PR_NUMBER: ${{ github.event.pull_request.number }}
     steps:
-      - name: 저장소 체크아웃
+      - name: 신뢰된 기본 브랜치 체크아웃
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
 
       - name: Vercel 토큰 확인
         run: |
