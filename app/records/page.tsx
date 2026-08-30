@@ -167,28 +167,26 @@ export default function RecordsPage() {
   };
 
   return (
-    <main className="app-shell">
-      <div className="ambient ambient-left" />
-      <div className="ambient ambient-right" />
-
-      <header className="topbar">
-        <Link className="brand" href="/" aria-label="같이볼래 처음으로">
-          <i aria-hidden="true">✦</i>
-          <span>같이</span>볼래
+    <main className="records-app">
+      <header className="records-header">
+        <Link className="match-brand" href="/" aria-label="같이볼래 처음으로">
+          <span aria-hidden="true">●</span> 같이볼래
         </Link>
-        <div className="header-meta">
-          <Link className="reset-button" href="/">
-            추천받기
-          </Link>
-        </div>
+        <Link className="records-recommend" href="/">새로 고르기 <span aria-hidden="true">→</span></Link>
       </header>
 
-      <div className="content-wrap">
+      <div className="records-wrap">
         <section className="records-stage page-enter">
-          <div className="stage-heading">
-            <span className="eyebrow">OUR RECORDS</span>
+          <div className="records-heading">
+            <span>우리의 시청 기록</span>
             <h1>함께 본 목록</h1>
-            <p>지금까지 남긴 기록과 평가예요.</p>
+            <p>함께 고른 순간과 감상을 한곳에 모았어요.</p>
+          </div>
+
+          <div className="records-overview" aria-label="기록 요약">
+            <div><strong>{data ? data.totalRecords : "—"}</strong><span>전체 기록</span></div>
+            <div><strong>{data ? groups.length : "—"}</strong><span>함께 본 작품</span></div>
+            <div><strong>{data ? unrated.length : "—"}</strong><span>남길 평가</span></div>
           </div>
 
           {notice && (
@@ -202,10 +200,11 @@ export default function RecordsPage() {
           )}
 
           {unrated.length > 0 && (
-            <div className="unrated-panel glass-card">
+            <div className="unrated-panel">
               <div className="unrated-head">
-                <h2>아직 별점을 남기지 않은 기록 {unrated.length}개</h2>
-                <p>다 본 콘텐츠만 표시해요. 보는 중인 기록은 빼두었어요.</p>
+                <span aria-hidden="true">✦</span>
+                <div><h2>감상을 기다리는 작품 {unrated.length}개</h2>
+                <p>별점과 한 줄 감상을 남기면 다음 선택에 참고할 수 있어요.</p></div>
               </div>
               <ul className="unrated-list">
                 {unrated.slice(0, 5).map((record) => (
@@ -228,70 +227,26 @@ export default function RecordsPage() {
 
           <div className="records-toolbar">
             <div className="toolbar-group">
-              <span className="toolbar-label">정렬</span>
-              <div className="segmented">
-                {SORT_OPTIONS.map((option) => (
-                  <button
-                    type="button"
-                    key={option.value}
-                    className={sort === option.value ? "active" : ""}
-                    aria-pressed={sort === option.value}
-                    onClick={() => changeSort(option.value)}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
+              <label className="toolbar-label" htmlFor="record-sort">정렬</label>
+              <select id="record-sort" value={sort} onChange={(event) => changeSort(event.target.value as SortKey)}>
+                {SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
             </div>
 
             <div className="toolbar-group">
-              <span className="toolbar-label">형식</span>
-              <div className="segmented">
-                <button
-                  type="button"
-                  className={format === "all" ? "active" : ""}
-                  aria-pressed={format === "all"}
-                  onClick={() => changeFormat("all")}
-                >
-                  전체
-                </button>
-                {CONTENT_FORMATS.map((item) => (
-                  <button
-                    type="button"
-                    key={item}
-                    className={format === item ? "active" : ""}
-                    aria-pressed={format === item}
-                    onClick={() => changeFormat(item)}
-                  >
-                    {item}
-                  </button>
-                ))}
-              </div>
+              <label className="toolbar-label" htmlFor="record-format">형식</label>
+              <select id="record-format" value={format} onChange={(event) => changeFormat(event.target.value)}>
+                <option value="all">모든 형식</option>
+                {CONTENT_FORMATS.map((item) => <option key={item} value={item}>{item}</option>)}
+              </select>
             </div>
 
             <div className="toolbar-group">
-              <span className="toolbar-label">상태</span>
-              <div className="segmented">
-                <button
-                  type="button"
-                  className={status === "all" ? "active" : ""}
-                  aria-pressed={status === "all"}
-                  onClick={() => changeStatus("all")}
-                >
-                  전체
-                </button>
-                {WATCH_STATUSES.map((item) => (
-                  <button
-                    type="button"
-                    key={item}
-                    className={status === item ? "active" : ""}
-                    aria-pressed={status === item}
-                    onClick={() => changeStatus(item)}
-                  >
-                    {WATCH_STATUS_LABEL[item]}
-                  </button>
-                ))}
-              </div>
+              <label className="toolbar-label" htmlFor="record-status">상태</label>
+              <select id="record-status" value={status} onChange={(event) => changeStatus(event.target.value)}>
+                <option value="all">모든 상태</option>
+                {WATCH_STATUSES.map((item) => <option key={item} value={item}>{WATCH_STATUS_LABEL[item]}</option>)}
+              </select>
             </div>
           </div>
 
@@ -332,7 +287,7 @@ export default function RecordsPage() {
         </section>
       </div>
 
-      <footer className="site-footer">
+      <footer className="records-footer">
         <span>같이볼래 · 오늘 우리에게 맞는 선택</span>
         <span>This product uses the TMDB API but is not endorsed or certified by TMDB.</span>
       </footer>
