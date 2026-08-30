@@ -1,5 +1,5 @@
-const CACHE_NAME = "gachi-bollae-shell-v1";
-const APP_SHELL = ["/manifest.webmanifest", "/favicon.svg"];
+const CACHE_NAME = "gachi-bollae-shell-v2";
+const APP_SHELL = ["/offline", "/manifest.webmanifest", "/favicon.svg"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -21,5 +21,12 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  event.respondWith(fetch(event.request).catch(() => caches.match(event.request)));
+  event.respondWith(
+    fetch(event.request).catch(async () => {
+      const cachedResponse = await caches.match(event.request);
+      if (cachedResponse) return cachedResponse;
+      if (event.request.mode === "navigate") return caches.match("/offline");
+      return Response.error();
+    }),
+  );
 });

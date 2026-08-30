@@ -31,6 +31,10 @@ test("홈 화면을 서버에서 HTML로 렌더링한다", async () => {
     const serviceWorkerResponse = await fetch(`${baseUrl}/sw.js`);
     assert.equal(serviceWorkerResponse.status, 200);
     assert.match(serviceWorkerResponse.headers.get("content-type") ?? "", /javascript/i);
+
+    const offlineResponse = await fetch(`${baseUrl}/offline`);
+    assert.equal(offlineResponse.status, 200);
+    assert.ok((await offlineResponse.text()).includes("인터넷 연결을"));
   } finally {
     await stop();
   }
