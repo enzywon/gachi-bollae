@@ -103,6 +103,7 @@ export default function Home() {
 
   const reset = () => {
     catalogRequestRef.current += 1;
+    setCatalogLoading(false);
     setScreen("intro");
     setPerson("me");
     setIndex(0);
@@ -117,6 +118,7 @@ export default function Home() {
 
   const start = () => {
     catalogRequestRef.current += 1;
+    setCatalogLoading(false);
     setChoices({ me: [], partner: [] });
     setPreferences({ me: { mood: "", genres: [] }, partner: { mood: "", genres: [] } });
     setPerson("me");
@@ -175,6 +177,7 @@ export default function Home() {
 
   const retryPreferences = () => {
     catalogRequestRef.current += 1;
+    setCatalogLoading(false);
     setChoices({ me: [], partner: [] });
     setPreferences({ me: { mood: "", genres: [] }, partner: { mood: "", genres: [] } });
     setPerson("me");

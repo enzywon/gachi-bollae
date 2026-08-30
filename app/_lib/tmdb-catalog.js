@@ -3,14 +3,20 @@ const TAG_BY_GENRE = new Map([
   [10765, "SF"], [10749, "로맨스"], [10764, "예능"], [10767, "예능"],
 ]);
 
-const GENRES_BY_TASTE = new Map([
-  ["추리", [9648]], ["코미디", [35]], ["드라마", [18]], ["예능", [10764, 10767]],
-  ["SF", [878, 10765]], ["로맨스", [10749]],
-]);
+const GENRES_BY_TASTE = {
+  movie: new Map([
+    ["추리", [9648]], ["코미디", [35]], ["드라마", [18]], ["예능", [35]],
+    ["SF", [878]], ["로맨스", [10749, 18]],
+  ]),
+  tv: new Map([
+    ["추리", [9648]], ["코미디", [35]], ["드라마", [18]], ["예능", [10764, 10767]],
+    ["SF", [10765]], ["로맨스", [18, 10766]],
+  ]),
+};
 
-/** @param {string[]} tastes */
-export function genreIdsFor(tastes = []) {
-  return [...new Set(tastes.flatMap((taste) => GENRES_BY_TASTE.get(taste) ?? []))];
+/** @param {string[]} tastes @param {"movie" | "tv"} mediaType */
+export function genreIdsFor(tastes = [], mediaType = "movie") {
+  return [...new Set(tastes.flatMap((taste) => GENRES_BY_TASTE[mediaType].get(taste) ?? []))];
 }
 
 /** @param {string} seed @param {number} offset */

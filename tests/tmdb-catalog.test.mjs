@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { discoverPathFor, genreIdsFor, pageForSeed, tmdbDetailsToContent } from "../app/_lib/tmdb-catalog.js";
 
-test("오늘 고른 장르를 TMDB discover 장르 ID로 변환한다", () => {
-  assert.deepEqual(genreIdsFor(["코미디", "추리", "코미디", "알 수 없음"]), [35, 9648]);
+test("오늘 고른 장르를 미디어 유형별 TMDB discover 장르 ID로 변환한다", () => {
+  assert.deepEqual(genreIdsFor(["코미디", "추리", "코미디", "알 수 없음"], "tv"), [35, 9648]);
+  assert.deepEqual(genreIdsFor(["로맨스"], "movie"), [10749, 18]);
+  assert.deepEqual(genreIdsFor(["로맨스"], "tv"), [18, 10766]);
   const path = discoverPathFor("tv", { genreIds: [35, 9648], page: 3 });
   assert.match(path, /^\/discover\/tv\?/);
   assert.equal(new URL(`https://example.com${path}`).searchParams.get("with_genres"), "35|9648");

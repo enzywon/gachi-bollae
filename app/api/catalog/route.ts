@@ -36,12 +36,11 @@ export async function GET(request: Request) {
 
   try {
     const { genres, maxRuntime, seed } = queryValues(request);
-    const genreIds = genreIdsFor(genres);
     const firstPage = pageForSeed(seed);
     const mediaTypes: MediaType[] = maxRuntime <= 60 ? ["tv"] : ["tv", "movie"];
     const firstResults = await Promise.all(mediaTypes.map(async (mediaType) => ({
       mediaType,
-      items: await discoverDetails(mediaType, token, genreIds, firstPage),
+      items: await discoverDetails(mediaType, token, genreIdsFor(genres, mediaType), firstPage),
     })));
     const details = firstResults.flatMap(({ mediaType, items }) => items.map((item) => ({ item, mediaType })));
     let contents = details
@@ -50,7 +49,7 @@ export async function GET(request: Request) {
 
     if (contents.length < 12) {
       const nextPage = pageForSeed(seed, 1);
-      const moreTv = await discoverDetails("tv", token, genreIds, nextPage);
+      const moreTv = await discoverDetails("tv", token, genreIdsFor(genres, "tv"), nextPage);
       contents = [...contents, ...moreTv.map((item) => tmdbDetailsToContent(item, "tv"))
         .filter((item): item is NonNullable<typeof item> => item !== null && item.runtime <= maxRuntime)];
     }
