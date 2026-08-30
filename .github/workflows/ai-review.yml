@@ -1,7 +1,10 @@
 name: AI Review
 
 on:
-  pull_request:
+  # 쓰기 토큰과 개인 PAT를 사용하는 워크플로이므로 PR head의 YAML이나 스크립트를
+  # 실행하면 안 된다. pull_request_target은 워크플로 전체를 기본 브랜치 기준으로
+  # 실행한다. PR head는 아래에서 diff 계산용 Git 객체로만 가져온다.
+  pull_request_target:
     types: [opened, synchronize, reopened]
     branches:
       - main
@@ -35,21 +38,31 @@ jobs:
       - name: 저장소 체크아웃
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.base.sha }}
           fetch-depth: 0
-          # AI 리뷰어가 작업 트리 안에서 도는 만큼 .git/config 에 토큰을 남기지 않는다.
+          # 이후 PR head 객체를 가져오더라도 자격 증명이 Git 설정에 남지 않게 한다.
           persist-credentials: false
 
-      # 리뷰어들은 각자 diff를 계산한다. 여기서는 리뷰할 게 있는지만 판정한다.
+      # untrusted PR head는 checkout하거나 그 안의 스크립트를 실행하지 않는다. GitHub의
+      # pull ref를 객체로만 가져오고 이벤트가 알려 준 SHA와 일치하는지 확인한 뒤 diff에만
+      # 사용한다. 이후 모든 shell/node 스크립트는 위에서 checkout한 base 버전이다.
       - name: 변경 여부 확인
         id: diff
         env:
-          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         shell: bash
         run: |
           mkdir -p ai-review-out
-          base_sha=$(git merge-base "origin/$BASE_REF" HEAD)
-          if git diff --quiet "$base_sha" HEAD; then
+          git fetch --no-tags origin "pull/${PR_NUMBER}/head"
+          fetched_head=$(git rev-parse FETCH_HEAD)
+          if [ "$fetched_head" != "$HEAD_SHA" ]; then
+            echo "가져온 PR head가 이벤트 SHA와 일치하지 않습니다." >&2
+            exit 1
+          fi
+
+          if git diff --quiet "$BASE_SHA" "$HEAD_SHA"; then
             echo "변경 사항이 없어 리뷰를 건너뜁니다."
             echo "empty=true" >> "$GITHUB_OUTPUT"
           else
