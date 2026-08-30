@@ -93,13 +93,15 @@ async function deleteDeployment(deploymentId) {
 }
 
 const closedPullRequest = CLOSED_PR_NUMBER || null;
-const openPullRequests = closedPullRequest ? null : await listOpenPullRequests();
+const openPullRequests = await listOpenPullRequests();
 const deployments = await listDeployments();
 const staleDeployments = deployments.filter((deployment) => {
   const pullRequest = deployment.meta?.githubPrId;
 
   if (deployment.target === "production" || !pullRequest) return false;
-  if (closedPullRequest) return String(pullRequest) === closedPullRequest;
+  if (closedPullRequest) {
+    return String(pullRequest) === closedPullRequest && !openPullRequests.has(closedPullRequest);
+  }
 
   return !openPullRequests.has(String(pullRequest));
 });
