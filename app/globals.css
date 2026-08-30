@@ -179,6 +179,46 @@ button:focus-visible { outline: 3px solid rgba(180, 113, 255, 0.8); outline-offs
 .record-link-button { width: 100%; margin-top: 8px; min-height: 38px; border: 1px solid rgba(200,140,255,.4); background: rgba(132,54,207,.16); color: #e2c9fa; border-radius: 10px; font-size: 11px; cursor: pointer; }
 .record-link-button:hover { background: rgba(132,54,207,.28); color: #fff; }
 
+/* 함께 보기: 각자의 응답을 숨긴 채 공통 후보만 찾는 한 기기 흐름 */
+.private-pick-invite { margin-bottom: 22px; padding: 22px 24px; display: flex; align-items: center; justify-content: space-between; gap: 24px; border: 1px solid rgba(88,215,173,.3); border-radius: 20px; background: linear-gradient(120deg, rgba(35,112,91,.18), rgba(20,25,42,.88)); }
+.private-pick-kicker { color: #84dfc2; font-size: 10px; font-weight: 750; letter-spacing: .1em; }
+.private-pick-invite h2 { margin: 7px 0 5px; font-size: 18px; letter-spacing: -.025em; }
+.private-pick-invite p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.private-pick-invite button { flex-shrink: 0; min-height: 46px; padding: 0 18px; border: 1px solid rgba(88,215,173,.45); border-radius: 12px; background: rgba(41,143,108,.25); color: #d5f6e9; font-weight: 700; cursor: pointer; }
+.private-picker, .private-match-result { width: min(100%, 620px); margin: 12px auto 28px; padding: clamp(20px, 4vw, 30px); border: 1px solid var(--line-strong); border-radius: 24px; background: rgba(16,18,31,.94); box-shadow: 0 24px 70px rgba(0,0,0,.3); }
+.private-picker-head { display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.private-picker-head > strong { color: var(--muted); font-size: 13px; }
+.picker-person { display: flex; align-items: center; gap: 11px; }
+.picker-person small { color: var(--muted-2); font-size: 10px; }
+.picker-person h2 { margin: 2px 0 0; font-size: 17px; }
+.picker-avatar { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 50%; background: #7242ad; color: #fff; font-size: 12px; font-weight: 800; }
+.picker-avatar.companion { background: #2f806a; }
+.private-picker-progress { height: 4px; margin: 15px 0 18px; overflow: hidden; border-radius: 999px; background: rgba(255,255,255,.08); }
+.private-picker-progress span { display: block; height: 100%; border-radius: inherit; background: var(--success); transition: width .2s ease; }
+.handoff-note { margin: 0 0 14px; padding: 11px 13px; border: 1px solid rgba(88,215,173,.28); border-radius: 11px; background: rgba(33,113,88,.13); color: #c6ecdf; font-size: 12px; text-align: center; }
+.private-candidate { display: grid; grid-template-columns: minmax(170px, 42%) 1fr; min-height: 275px; overflow: hidden; border: 1px solid var(--line); border-radius: 18px; background: rgba(255,255,255,.025); }
+.private-candidate-poster { display: grid; place-items: center; color: rgba(255,255,255,.88); font-size: 92px; font-weight: 800; }
+.private-candidate-copy { padding: 24px 22px; align-self: center; }
+.private-candidate-copy > span { color: #cda2f5; font-size: 10px; }
+.private-candidate-copy h3 { margin: 7px 0 12px; font-size: 27px; letter-spacing: -.04em; }
+.private-candidate-copy > p { margin: 16px 0 0; color: var(--muted); font-size: 12px; line-height: 1.65; }
+.private-picker-actions, .match-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px; }
+.private-picker-actions button, .match-secondary { min-height: 50px; border-radius: 12px; font-weight: 700; cursor: pointer; }
+.private-pass, .match-secondary { border: 1px solid var(--line); background: transparent; color: var(--muted); }
+.private-like { border: 1px solid rgba(88,215,173,.45); background: rgba(41,143,108,.28); color: #d5f6e9; }
+.privacy-note { margin: 12px 0 0; color: var(--muted-2); font-size: 10px; text-align: center; }
+.private-match-result { text-align: center; }
+.match-mark { width: 52px; height: 52px; margin: 0 auto 15px; display: grid; place-items: center; border-radius: 50%; background: var(--success); color: #07110e; font-size: 22px; font-weight: 900; }
+.match-mark.empty { background: rgba(255,255,255,.08); color: var(--muted); }
+.private-match-result h2 { margin: 8px 0; font-size: 30px; letter-spacing: -.04em; }
+.private-match-result > p { margin: 0 auto; max-width: 450px; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.matched-content { margin-top: 22px; padding: 12px; display: grid; grid-template-columns: 104px 1fr; align-items: center; gap: 18px; border: 1px solid var(--line); border-radius: 17px; background: rgba(255,255,255,.035); text-align: left; }
+.matched-content-poster { height: 124px; display: grid; place-items: center; border-radius: 12px; color: #fff; font-size: 52px; font-weight: 800; }
+.matched-content small { color: #84dfc2; font-size: 9px; }
+.matched-content h3 { margin: 5px 0 7px; font-size: 23px; }
+.matched-content p { margin: 0; color: var(--muted); font-size: 11px; }
+.match-actions .pick-button { margin-top: 0; }
+
 /* 평가 시트 */
 .sheet-backdrop { position: fixed; inset: 0; z-index: 40; background: rgba(5,4,12,.72); backdrop-filter: blur(6px); display: flex; align-items: flex-end; justify-content: center; padding: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left); overscroll-behavior: contain; animation: page-in .2s ease both; }
 .rating-sheet { width: min(560px, 100%); max-height: 92vh; max-height: 92dvh; overflow-y: auto; overscroll-behavior: contain; background: var(--surface-strong); border: 1px solid var(--line-strong); border-radius: 26px 26px 0 0; padding: 24px 22px 20px; box-shadow: 0 -20px 70px rgba(0,0,0,.55); }
@@ -322,10 +362,20 @@ button:focus-visible { outline: 3px solid rgba(180, 113, 255, 0.8); outline-offs
   .record-detail-actions { width: 100%; }
   .record-detail-actions button { flex: 1; }
   .unrated-list li { flex-direction: column; align-items: stretch; }
+  .private-pick-invite { align-items: stretch; flex-direction: column; padding: 19px; }
+  .private-pick-invite button { width: 100%; }
+  .private-picker, .private-match-result { border-radius: 19px; padding: 17px; }
+  .private-candidate { grid-template-columns: 1fr; }
+  .private-candidate-poster { min-height: 180px; font-size: 72px; }
+  .private-candidate-copy { padding: 19px; }
+  .private-candidate-copy h3 { font-size: 24px; }
+  .private-picker-actions, .match-actions { grid-template-columns: 1fr; }
+  .matched-content { grid-template-columns: 76px 1fr; gap: 12px; }
+  .matched-content-poster { height: 94px; font-size: 38px; }
 }
 
 @media (pointer: coarse) {
-  .chip, .back-button, .record-link-button, .reaction-row button, .selection-banner button, .unrated-list button, .record-detail-actions button, .empty-state button, .result-footer button, .save-toast > button { min-height: 44px; }
+  .chip, .back-button, .record-link-button, .reaction-row button, .selection-banner button, .unrated-list button, .record-detail-actions button, .empty-state button, .result-footer button, .save-toast > button, .private-picker-actions button, .match-secondary { min-height: 44px; }
   .sheet-close { width: 44px; height: 44px; }
 }
 
