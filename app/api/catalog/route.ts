@@ -37,7 +37,7 @@ export async function GET(request: Request) {
   try {
     const { genres, maxRuntime, seed } = queryValues(request);
     const firstPage = pageForSeed(seed);
-    const mediaTypes: MediaType[] = maxRuntime <= 60 ? ["tv"] : ["tv", "movie"];
+    const mediaTypes: MediaType[] = ["tv", "movie"];
     const firstResults = await Promise.all(mediaTypes.map(async (mediaType) => ({
       mediaType,
       items: await discoverDetails(mediaType, token, genreIdsFor(genres, mediaType), firstPage),
