@@ -22,6 +22,7 @@ const DEMO_MATCH_POOL = CONTENTS.filter(
   (item) => item.runtime <= 60 && !item.avoid.includes("잔인함·고어"),
 );
 const RECENT_MATCH_IDS_KEY = "gachi-bollae:recent-match-ids";
+const MATCH_POOL_LIMIT = 5;
 
 function newRecommendationSeed() {
   return crypto.getRandomValues(new Uint32Array(1))[0];
@@ -94,7 +95,7 @@ export default function Home() {
       selectedGenres,
       recentIds: recentContentIds,
       seed: recommendationSeed,
-      limit: 8,
+      limit: MATCH_POOL_LIMIT,
     }) as DemoContent[];
   }, [contents, preferences, recentContentIds, recommendationSeed]);
 
