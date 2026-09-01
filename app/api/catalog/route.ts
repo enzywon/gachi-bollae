@@ -4,6 +4,8 @@ import { tmdbDetailsToContent } from "../../_lib/tmdb-catalog";
 const TMDB_API = "https://api.themoviedb.org/3";
 type MediaType = "movie" | "tv";
 type PopularItem = { id: number };
+const POPULAR_PAGES = [1, 2, 3];
+const ITEMS_PER_PAGE = 6;
 
 async function tmdbFetch(path: string, token: string): Promise<unknown> {
   const response = await fetch(`${TMDB_API}${path}`, {
@@ -15,8 +17,13 @@ async function tmdbFetch(path: string, token: string): Promise<unknown> {
 }
 
 async function popularDetails(mediaType: MediaType, token: string) {
-  const popular = await tmdbFetch(`/${mediaType}/popular?language=ko-KR&region=KR&page=1`, token) as { results?: PopularItem[] };
-  const results = await Promise.allSettled((popular.results ?? []).slice(0, 6).map((item) =>
+  const popularPages = await Promise.all(POPULAR_PAGES.map((page) =>
+    tmdbFetch(`/${mediaType}/popular?language=ko-KR&region=KR&page=${page}`, token) as Promise<{ results?: PopularItem[] }>
+  ));
+  const popular = popularPages.flatMap((page) => page.results?.slice(0, ITEMS_PER_PAGE) ?? []).filter(
+    (item, index, items) => items.findIndex((candidate) => candidate.id === item.id) === index
+  );
+  const results = await Promise.allSettled(popular.map((item) =>
     tmdbFetch(`/${mediaType}/${item.id}?language=ko-KR&append_to_response=watch%2Fproviders`, token)
   ));
   return results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);

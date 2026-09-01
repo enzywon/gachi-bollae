@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import RatingSheet, { type RatingSheetValues } from "./_components/RatingSheet";
 import { CONTENTS, MOODS, TASTES, contentKeyOf, type DemoContent } from "./_data/contents";
 import { createRecord, fetchCatalog } from "./_lib/client";
+import { buildRecommendationPool } from "./_lib/recommendation-pool";
 
 type Person = "me" | "partner";
 type ChoiceMap = Record<Person, number[]>;
@@ -20,6 +21,22 @@ const PEOPLE: Record<Person, { name: string; initial: string }> = {
 const DEMO_MATCH_POOL = CONTENTS.filter(
   (item) => item.runtime <= 60 && !item.avoid.includes("잔인함·고어"),
 );
+const RECENT_MATCH_IDS_KEY = "gachi-bollae:recent-match-ids";
+
+function newRecommendationSeed() {
+  return crypto.getRandomValues(new Uint32Array(1))[0];
+}
+
+function storedRecentContentIds() {
+  if (typeof window === "undefined") return [];
+  try {
+    const stored = JSON.parse(sessionStorage.getItem(RECENT_MATCH_IDS_KEY) ?? "[]");
+    return Array.isArray(stored) ? stored.filter(Number.isInteger).slice(0, 40) : [];
+  } catch {
+    sessionStorage.removeItem(RECENT_MATCH_IDS_KEY);
+    return [];
+  }
+}
 
 function reasonFor(item: DemoContent) {
   if (item.tags.includes("코미디")) return "가볍게 웃기 좋은 코미디";
@@ -63,17 +80,23 @@ export default function Home() {
   const [contents, setContents] = useState<DemoContent[]>(CONTENTS);
   const [catalogSource, setCatalogSource] = useState<"demo" | "tmdb">("demo");
   const [catalogLoading, setCatalogLoading] = useState(true);
+  const [recommendationSeed, setRecommendationSeed] = useState(0);
+  const [recentContentIds, setRecentContentIds] = useState<number[]>(storedRecentContentIds);
 
   const matchPool = useMemo(() => {
     const eligible = contents.filter((item) => item.runtime <= 60);
     const source = eligible.length >= 3 ? eligible : DEMO_MATCH_POOL;
     const selectedMoods = [preferences.me.mood, preferences.partner.mood].filter(Boolean);
     const selectedGenres = [...preferences.me.genres, ...preferences.partner.genres];
-    const score = (item: DemoContent) =>
-      item.moods.reduce((sum, mood) => sum + selectedMoods.filter((selected) => selected === mood).length * 3, 0) +
-      item.tags.reduce((sum, tag) => sum + selectedGenres.filter((selected) => selected === tag).length * 2, 0);
-    return [...source].sort((a, b) => score(b) - score(a) || a.runtime - b.runtime).slice(0, 8);
-  }, [contents, preferences]);
+    return buildRecommendationPool({
+      candidates: source,
+      selectedMoods,
+      selectedGenres,
+      recentIds: recentContentIds,
+      seed: recommendationSeed,
+      limit: 8,
+    }) as DemoContent[];
+  }, [contents, preferences, recentContentIds, recommendationSeed]);
 
   const current = matchPool[index];
   const matches = useMemo(
@@ -82,19 +105,11 @@ export default function Home() {
   );
   const nearbyMatches = useMemo(() => {
     const selectedIds = new Set([...choices.me, ...choices.partner]);
-    const selectedMoods = [preferences.me.mood, preferences.partner.mood].filter(Boolean);
-    const selectedGenres = [...preferences.me.genres, ...preferences.partner.genres];
 
-    return contents
-      .filter((item) => item.runtime <= 60 && !selectedIds.has(item.id))
-      .sort((a, b) => {
-        const score = (item: DemoContent) =>
-          item.moods.reduce((sum, mood) => sum + selectedMoods.filter((selected) => selected === mood).length * 3, 0) +
-          item.tags.reduce((sum, tag) => sum + selectedGenres.filter((selected) => selected === tag).length * 2, 0);
-        return score(b) - score(a) || a.runtime - b.runtime;
-      })
+    return matchPool
+      .filter((item) => !selectedIds.has(item.id))
       .slice(0, 3);
-  }, [choices, contents, preferences]);
+  }, [choices, matchPool]);
   const resultPool = matches.length > 0 ? matches : nearbyMatches;
   const winner = resultPool[matchIndex % Math.max(resultPool.length, 1)];
   const isMutual = matches.length > 0;
@@ -119,6 +134,14 @@ export default function Home() {
     return () => { active = false; };
   }, []);
 
+  const rememberMatchPool = () => {
+    const recent = storedRecentContentIds();
+    const currentIds = matchPool.map((item) => item.id);
+    const next = [...currentIds, ...recent.filter((id) => !currentIds.includes(id))].slice(0, 40);
+    sessionStorage.setItem(RECENT_MATCH_IDS_KEY, JSON.stringify(next));
+    return next;
+  };
+
   const reset = () => {
     setScreen("intro");
     setPerson("me");
@@ -138,6 +161,8 @@ export default function Home() {
     setIndex(0);
     setMatchIndex(0);
     setSavedTitle("");
+    setRecentContentIds(storedRecentContentIds());
+    setRecommendationSeed(newRecommendationSeed());
     setScreen("preference");
   };
 
@@ -167,11 +192,14 @@ export default function Home() {
   };
 
   const retryPreferences = () => {
+    const recent = rememberMatchPool();
     setChoices({ me: [], partner: [] });
     setPreferences({ me: { mood: "", genres: [] }, partner: { mood: "", genres: [] } });
     setPerson("me");
     setIndex(0);
     setMatchIndex(0);
+    setRecentContentIds(recent);
+    setRecommendationSeed(newRecommendationSeed());
     setScreen("preference");
   };
 
@@ -194,6 +222,7 @@ export default function Home() {
       return;
     }
 
+    rememberMatchPool();
     setScreen("match");
   };
 
