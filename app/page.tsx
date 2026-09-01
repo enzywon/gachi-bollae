@@ -318,7 +318,7 @@ export default function Home() {
             </div>
           )}
 
-          <article className={`match-poster ${current.palette}`}>
+          <article className={`match-poster ${current.palette} ${current.posterUrl ? "has-poster-image" : ""}`}>
             <div
               className={`poster-art ${current.posterUrl ? "has-image" : ""}`}
               style={current.posterUrl ? { backgroundImage: `linear-gradient(180deg, rgba(18, 24, 22, .04), rgba(18, 24, 22, .52)), url(${current.posterUrl})` } : undefined}
