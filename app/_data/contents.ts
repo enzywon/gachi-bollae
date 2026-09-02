@@ -17,6 +17,11 @@ export type DemoContent = {
   palette: string;
   posterUrl: string | null;
   safetyKnown: boolean;
+  keywordIds?: number[];
+  keywordNames?: string[];
+  certification?: string | null;
+  voteAverage?: number;
+  voteCount?: number;
 };
 
 export const CONTEXTS = [

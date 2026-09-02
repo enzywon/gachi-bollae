@@ -23,8 +23,11 @@ async function popularDetails(mediaType: MediaType, token: string) {
   const popular = popularPages.flatMap((page) => page.results?.slice(0, ITEMS_PER_PAGE) ?? []).filter(
     (item, index, items) => items.findIndex((candidate) => candidate.id === item.id) === index
   );
+  const append = mediaType === "movie"
+    ? "watch/providers,keywords,release_dates"
+    : "watch/providers,keywords,content_ratings";
   const results = await Promise.allSettled(popular.map((item) =>
-    tmdbFetch(`/${mediaType}/${item.id}?language=ko-KR&append_to_response=watch%2Fproviders`, token)
+    tmdbFetch(`/${mediaType}/${item.id}?language=ko-KR&append_to_response=${encodeURIComponent(append)}`, token)
   ));
   return results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
 }

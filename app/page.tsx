@@ -24,6 +24,11 @@ const DEMO_MATCH_POOL = CONTENTS.filter(
 const RECENT_MATCH_IDS_KEY = "gachi-bollae:recent-match-ids";
 const MATCH_POOL_LIMIT = 5;
 
+function isEligibleContent(item: DemoContent) {
+  return item.runtime <= 60 && item.certification !== "19" &&
+    !item.avoid.includes("잔인함·고어") && !item.avoid.includes("선정적인 장면");
+}
+
 function newRecommendationSeed() {
   return crypto.getRandomValues(new Uint32Array(1))[0];
 }
@@ -85,7 +90,7 @@ export default function Home() {
   const [recentContentIds, setRecentContentIds] = useState<number[]>(storedRecentContentIds);
 
   const matchPool = useMemo(() => {
-    const eligible = contents.filter((item) => item.runtime <= 60);
+    const eligible = contents.filter(isEligibleContent);
     const source = eligible.length >= 3 ? eligible : DEMO_MATCH_POOL;
     const selectedMoods = [preferences.me.mood, preferences.partner.mood].filter(Boolean);
     const selectedGenres = [...preferences.me.genres, ...preferences.partner.genres];
@@ -121,7 +126,7 @@ export default function Home() {
     fetchCatalog()
       .then((catalog) => {
         if (!active) return;
-        const eligible = catalog.contents.filter((item) => item.runtime <= 60);
+        const eligible = catalog.contents.filter(isEligibleContent);
         if (eligible.length >= 3) {
           setContents(catalog.contents);
           setCatalogSource(catalog.source);
@@ -134,6 +139,13 @@ export default function Home() {
 
     return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    if (screen !== "pick" || !current) return;
+    const recent = storedRecentContentIds();
+    const next = [current.id, ...recent.filter((id) => id !== current.id)].slice(0, 40);
+    sessionStorage.setItem(RECENT_MATCH_IDS_KEY, JSON.stringify(next));
+  }, [current, screen]);
 
   const rememberMatchPool = () => {
     const recent = storedRecentContentIds();
