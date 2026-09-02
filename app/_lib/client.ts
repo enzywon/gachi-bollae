@@ -133,8 +133,18 @@ export async function fetchRecords(params: {
   return (await response.json()) as RecordListResponse;
 }
 
-export async function fetchCatalog(): Promise<{ source: "demo" | "tmdb"; contents: DemoContent[] }> {
-  const response = await fetch("/api/catalog");
+export async function fetchCatalog(params?: {
+  genres?: string[];
+  moods?: string[];
+  maxRuntime?: number;
+  seed?: string;
+}): Promise<{ source: "demo" | "tmdb"; contents: DemoContent[]; poolSize?: number }> {
+  const query = new URLSearchParams();
+  if (params?.genres?.length) query.set("genres", params.genres.join(","));
+  if (params?.moods?.length) query.set("moods", params.moods.join(","));
+  if (params?.maxRuntime) query.set("maxRuntime", String(params.maxRuntime));
+  if (params?.seed) query.set("seed", params.seed);
+  const response = await fetch(`/api/catalog${query.size > 0 ? `?${query.toString()}` : ""}`, { cache: "no-store" });
   if (!response.ok) throw new Error(await readError(response));
   return response.json();
 }
