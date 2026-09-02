@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ServiceWorkerRegistration } from "./_components/ServiceWorkerRegistration";
+import { TmdbCredits } from "./_components/TmdbCredits";
 import "./globals.css";
 
 const siteUrl = "https://gachi-bollae.vercel.app";
@@ -82,6 +83,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         {children}
+        <TmdbCredits />
         <ServiceWorkerRegistration />
       </body>
     </html>

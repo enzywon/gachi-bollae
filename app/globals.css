@@ -178,6 +178,13 @@ button:focus-visible { outline: 3px solid rgba(180, 113, 255, 0.8); outline-offs
 
 .site-footer { width: min(1180px, calc(100% - 40px)); margin: 0 auto; padding: 26px 0 34px; border-top: 1px solid var(--line); color: #60697b; display: flex; justify-content: space-between; gap: 20px; font-size: 9px; position: relative; z-index: 2; }
 
+.tmdb-credits { width: min(1180px, calc(100% - 40px)); margin: 0 auto; padding: 18px 0 calc(22px + env(safe-area-inset-bottom)); border-top: 1px solid rgba(189, 199, 230, .1); display: flex; align-items: center; justify-content: center; gap: 14px; color: var(--muted-2); position: relative; z-index: 2; }
+.tmdb-credits a { display: flex; flex: 0 0 auto; opacity: .72; transition: opacity .18s ease; }
+.tmdb-credits a:hover { opacity: .9; }
+.tmdb-credits img { display: block; width: 82px; height: auto; }
+.tmdb-credits p { max-width: 430px; margin: 0; font-size: 9px; line-height: 1.55; }
+.tmdb-credits span { display: block; color: #596277; }
+
 /* 저장 알림 */
 .save-toast { display: grid; grid-template-columns: 34px 1fr auto auto; gap: 12px; align-items: center; border: 1px solid rgba(88,215,173,.36); background: rgba(33,113,88,.14); border-radius: 16px; padding: 14px 18px; margin-bottom: 18px; }
 .save-toast > span { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--success); color: #07110e; font-weight: 900; font-size: 13px; }
@@ -314,6 +321,7 @@ button:focus-visible { outline: 3px solid rgba(180, 113, 255, 0.8); outline-offs
   .selection-banner { grid-template-columns: 34px 1fr; }
   .selection-banner button { grid-column: 1 / -1; }
   .result-footer, .site-footer { flex-direction: column; align-items: flex-start; }
+  .tmdb-credits { align-items: flex-start; justify-content: flex-start; }
 }
 
 @container (max-width: 900px) {
