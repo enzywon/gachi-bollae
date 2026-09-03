@@ -126,7 +126,11 @@ export default function Home() {
     const recent = storedRecentContentIds();
     const currentIds = matchPool.map((item) => item.id);
     const next = [...currentIds, ...recent.filter((id) => !currentIds.includes(id))].slice(0, 40);
-    sessionStorage.setItem(RECENT_MATCH_IDS_KEY, JSON.stringify(next));
+    try {
+      sessionStorage.setItem(RECENT_MATCH_IDS_KEY, JSON.stringify(next));
+    } catch {
+      // 최근 추천 기록 저장 실패는 현재 선택 흐름을 중단하지 않는다.
+    }
     return next;
   };
   const reset = () => {
