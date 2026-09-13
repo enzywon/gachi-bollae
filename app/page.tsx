@@ -5,7 +5,7 @@ import { useMemo, useRef, useState } from "react";
 import RatingSheet, { type RatingSheetValues } from "./_components/RatingSheet";
 import { CONTENTS, MOODS, TASTES, contentKeyOf, type DemoContent } from "./_data/contents";
 import { createRecord, fetchCatalog } from "./_lib/client";
-import { buildRecommendationPool } from "./_lib/recommendation-pool";
+import { buildRecommendationPool, excludeRejectedCandidates } from "./_lib/recommendation-pool";
 
 type Person = "me" | "partner";
 type ChoiceMap = Record<Person, number[]>;
@@ -75,6 +75,7 @@ export default function Home() {
   const [index, setIndex] = useState(0);
   const [matchIndex, setMatchIndex] = useState(0);
   const [choices, setChoices] = useState<ChoiceMap>({ me: [], partner: [] });
+  const [rejectedContentIds, setRejectedContentIds] = useState<number[]>([]);
   const [preferences, setPreferences] = useState<PreferenceMap>({
     me: { mood: "", genres: [] },
     partner: { mood: "", genres: [] },
@@ -114,10 +115,11 @@ export default function Home() {
   const nearbyMatches = useMemo(() => {
     const selectedIds = new Set([...choices.me, ...choices.partner]);
 
-    return matchPool
-      .filter((item) => !selectedIds.has(item.id))
-      .slice(0, 3);
-  }, [choices, matchPool]);
+    return excludeRejectedCandidates(
+      matchPool.filter((item) => !selectedIds.has(item.id)),
+      rejectedContentIds,
+    ).slice(0, 3);
+  }, [choices, matchPool, rejectedContentIds]);
   const resultPool = matches.length > 0 ? matches : nearbyMatches;
   const winner = resultPool[matchIndex % Math.max(resultPool.length, 1)];
   const isMutual = matches.length > 0;
@@ -141,6 +143,7 @@ export default function Home() {
     setIndex(0);
     setMatchIndex(0);
     setChoices({ me: [], partner: [] });
+    setRejectedContentIds([]);
     setPreferences({ me: { mood: "", genres: [] }, partner: { mood: "", genres: [] } });
     setSheetTarget(null);
     setSheetError(null);
@@ -153,6 +156,7 @@ export default function Home() {
     catalogRequestRef.current += 1;
     setCatalogLoading(false);
     setChoices({ me: [], partner: [] });
+    setRejectedContentIds([]);
     setPreferences({ me: { mood: "", genres: [] }, partner: { mood: "", genres: [] } });
     setPerson("me");
     setIndex(0);
@@ -216,6 +220,7 @@ export default function Home() {
     setCatalogLoading(false);
     setCatalogError(null);
     setChoices({ me: [], partner: [] });
+    setRejectedContentIds([]);
     setPreferences({ me: { mood: "", genres: [] }, partner: { mood: "", genres: [] } });
     setPerson("me");
     setIndex(0);
@@ -232,6 +237,11 @@ export default function Home() {
       ? { ...choices, [person]: [...choices[person], current.id] }
       : choices;
     setChoices(nextChoices);
+    if (!liked) {
+      setRejectedContentIds((rejectedIds) =>
+        rejectedIds.includes(current.id) ? rejectedIds : [...rejectedIds, current.id]
+      );
+    }
 
     if (index < matchPool.length - 1) {
       setIndex((value) => value + 1);
