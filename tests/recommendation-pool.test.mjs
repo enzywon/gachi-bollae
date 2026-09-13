@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   buildRecommendationPool,
   contentSimilarity,
+  excludeRejectedCandidates,
   recommendationScore,
 } from "../app/_lib/recommendation-pool.js";
 
@@ -40,6 +41,12 @@ test("최근 노출되지 않은 후보를 먼저 보여준다", () => {
   });
 
   assert.deepEqual(new Set(pool.slice(0, 3).map((item) => item.id)), new Set([5, 6, 7]));
+});
+
+test("한 사람이 제외한 후보는 대안 추천에서도 다시 보여주지 않는다", () => {
+  const alternatives = excludeRejectedCandidates(candidates, [2, 4, 6]);
+
+  assert.deepEqual(alternatives.map((item) => item.id), [1, 3, 5, 7]);
 });
 
 test("후보가 충분하면 한 주 장르가 두 개를 넘지 않는다", () => {
